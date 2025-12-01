@@ -1,0 +1,9 @@
+.venv/
+.idea/
+data/*
+outputs/*
+sandbox.txt
+wrds_requests.txt
+
+
+
