@@ -1,7 +1,12 @@
 .venv/
 .idea/
+
 data/*
+!data/.gitkeep
+
 outputs/*
+!outputs/.gitkeep
+
 sandbox.txt
 wrds_requests.txt
 
