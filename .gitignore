@@ -9,6 +9,6 @@ outputs/*
 
 sandbox.txt
 wrds_requests.txt
-
+aws_credentials.txt
 
 
