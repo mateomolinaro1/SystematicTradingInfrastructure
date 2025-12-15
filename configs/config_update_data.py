@@ -1,7 +1,5 @@
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-
 WRDS_USERNAME = 'mateo_molinaro'
 IB_HOST = '127.0.0.1'
 IB_PORT = 4002
@@ -47,4 +45,5 @@ DATE_COLS = [
 ]
 
 SAVING_CONFIG_UNIVERSE = {}
+RETURN_BOOL_UNIVERSE = False
 

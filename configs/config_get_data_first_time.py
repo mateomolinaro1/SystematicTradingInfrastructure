@@ -1,7 +1,5 @@
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-
 WRDS_USERNAME = 'mateo_molinaro'
 IB_HOST = '127.0.0.1'
 IB_PORT = 4002
@@ -80,4 +78,4 @@ USE_RTH = True
 FORMAT_DATE = 1
 SAVE_PRICES = True
 RETURN_BOOL_IB_PRICES = False
-PUSH_TO_CLOUD = True
+PUSH_TO_CLOUD = False

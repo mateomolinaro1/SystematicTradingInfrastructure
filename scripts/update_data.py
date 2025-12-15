@@ -16,6 +16,8 @@ dh = DataHandler(wrds_username=WRDS_USERNAME,
 
 dh.update_data(wrds_request=WRDS_REQUEST,
                date_cols=DATE_COLS,
-               saving_config=SAVING_CONFIG_UNIVERSE)
+               saving_config=SAVING_CONFIG_UNIVERSE,
+               return_bool=RETURN_BOOL_UNIVERSE)
 
 logging.info("Data update completed.")
+

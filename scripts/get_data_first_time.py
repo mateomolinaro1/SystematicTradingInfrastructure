@@ -1,7 +1,7 @@
 from configs.config_get_data_first_time  import *
 from packages.data_handler import DataHandler
+from packages.files_utils import FileUtils
 import logging
-import boto3
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,7 +16,7 @@ dh = DataHandler(wrds_username=WRDS_USERNAME,
                  ib_client_id=IB_CLIENT_ID)
 dh.connect_wrds()
 dh.connect_ib()
-dh.delete_all_files(path=r'.\data')
+FileUtils.delete_all_files(path=r'.\data', except_git_keep=True)
 dh.fetch_wrds_historical_universe(wrds_request=WRDS_REQUEST,
                                   starting_date=STARTING_DATE,
                                   date_cols=DATE_COLS,

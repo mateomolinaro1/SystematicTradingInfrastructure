@@ -132,8 +132,7 @@ class DataHandler:
             r'.\data\wrds_gross_query.parquet':'data/wrds_gross_query.parquet',
             r'.\data\ib_historical_prices.parquet':'data/ib_historical_prices.parquet',
             r'.\data\tickers_across_dates.pkl':'data/tickers_across_dates.pkl',
-            r'.\data\dates.pkl':'data/dates.pkl',
-            r'.\data\ib_historical_prices_dct.pkl':'data/ib_historical_prices_dct.pkl'
+            r'.\data\dates.pkl':'data/dates.pkl'
         }
         self.bucket_name = "systematic-trading-infra-storage"
         self.s3_files_downloaded = None
@@ -160,24 +159,6 @@ class DataHandler:
         if self.ib is not None:
             self.ib.disconnect()
             self.ib = None
-
-    @staticmethod
-    def delete_all_files(path: str) -> None:
-        """
-        Delete all files (not directories) inside the given directory.
-        :parameters:
-        path : str
-            Directory path where files should be deleted.
-        """
-        if not os.path.isdir(path):
-            raise ValueError(f"{path} is not a valid directory")
-
-        for entry in os.listdir(path):
-            full_path = os.path.join(path, entry)
-
-            # Delete only files
-            if os.path.isfile(full_path):
-                os.remove(full_path)
 
     def load_data(self):
         """
@@ -252,7 +233,8 @@ class DataHandler:
                 )
 
     def crsp_ticker_to_ib_ticker(self,
-                                 save_mapping_locally:bool=True
+                                 save_mapping_locally:bool=True,
+                                 save_ib_tickers_to_cloud:bool=False
                                  ) -> None:
         """Maps CRSP ticker to IB ticker safely with throttling + retries."""
         if self.crsp_to_ib_mapping_tickers is None:
@@ -322,6 +304,15 @@ class DataHandler:
             with open(r'.\data\crsp_to_ib_mapping_tickers.pkl', 'wb') as f:
                 pickle.dump(self.crsp_to_ib_mapping_tickers, f)
 
+        if save_ib_tickers_to_cloud:
+            # --- Save ib_tickers to cloud ---
+            if self.s3 is None:
+                self.connect_aws_s3()
+            ib_tickers_bytes = pickle.dumps(self.ib_tickers)
+            self.s3.put_object(Bucket=self.bucket_name,
+                               Key='data/ib_tickers.pkl',
+                               Body=ib_tickers_bytes)
+
         logger.info("CRSP -> IB ticker mapping completed successfully.")
 
     def fetch_wrds_historical_universe(self,
@@ -332,7 +323,9 @@ class DataHandler:
                                        save_tickers_across_dates:bool=True,
                                        save_dates:bool=True,
                                        return_bool:bool=False,
-                                       crsp_to_ib_mapping_tickers_from_cloud:bool=False
+                                       crsp_to_ib_mapping_tickers_from_cloud:bool=False,
+                                       update_crsp_to_ib_mapping_tickers:bool=False,
+                                       save_ib_tickers_to_cloud:bool=False
                                        )->Union[None,dict]:
         """
         Fetches historical universe from WRDS based on the provided SQL request. It saves wrds_gross_query
@@ -378,6 +371,9 @@ class DataHandler:
         # between CRSP tickers and IB tickers
         self.wrds_gross_query = self.wrds_gross_query.drop_duplicates(subset=['date', 'permno'],
                                                                       keep='last')
+        # Sort for checking
+        self.wrds_gross_query = self.wrds_gross_query.sort_values(by=['date'],
+                                                                  ascending=True).reset_index(drop=True)
         self.tickers_across_dates = list(self.wrds_gross_query['ticker'].unique())
         if save_tickers_across_dates:
             with open(r'.\data\tickers_across_dates.pkl', 'wb') as f:
@@ -403,7 +399,9 @@ class DataHandler:
         self.wrds_universe = universe
 
         # Format the universe DataFrame
-        self.format_wrds_historical_universe(from_cloud=crsp_to_ib_mapping_tickers_from_cloud)
+        self.format_wrds_historical_universe(from_cloud=crsp_to_ib_mapping_tickers_from_cloud,
+                                             update_crsp_to_ib_mapping=update_crsp_to_ib_mapping_tickers,
+                                             save_ib_tickers_to_cloud=save_ib_tickers_to_cloud)
 
         # Save to file if a saving path is provided
         if 'universe' in saving_config:
@@ -426,7 +424,8 @@ class DataHandler:
 
     def format_wrds_historical_universe(self,
                                         from_cloud:bool=False,
-                                        update_crsp_to_ib_mapping:bool=False
+                                        update_crsp_to_ib_mapping:bool=False,
+                                        save_ib_tickers_to_cloud:bool=False
                                         )->None:
         """Formats the WRDS historical universe DataFrame."""
         if self.wrds_universe is None:
@@ -499,7 +498,8 @@ class DataHandler:
                 original_tickers_across_dates = self.tickers_across_dates
                 self.tickers_across_dates = new_wrds_tickers
                 # Build mapping for new tickers
-                self.crsp_ticker_to_ib_ticker(save_mapping_locally=False)
+                self.crsp_ticker_to_ib_ticker(save_mapping_locally=False,
+                                              save_ib_tickers_to_cloud=save_ib_tickers_to_cloud)
                 # Now in self.crsp_to_ib_mapping_tickers we have the new mappings added
                 # Restore original tickers_across_dates
                 self.tickers_across_dates = original_tickers_across_dates
@@ -509,6 +509,8 @@ class DataHandler:
         self.wrds_universe['ticker_ib'] = self.wrds_universe['ticker'].map(
             self.crsp_to_ib_mapping_tickers
         )
+        # Sort
+        self.wrds_universe = self.wrds_universe.sort_index(ascending=True)
 
     def get_wrds_historical_prices(self,
                                    saving_config:dict,
@@ -564,6 +566,8 @@ class DataHandler:
                                    use_rth:bool=True,
                                    format_date:int=1,
                                    save_prices:bool=True,
+                                   load_from_cloud:bool=False,
+                                   updating_procedure:bool=False,
                                    return_bool:bool=False)->Union[None, pd.DataFrame]:
         """
         Fetch historical prices from IB for all tickers in 'tickers_across_dates'
@@ -589,53 +593,61 @@ class DataHandler:
             self.connect_ib()
             logger.info("Connected to IB.")
 
-        # --------------------------------------------------------
-        # 1. Load WRDS universe if needed
-        # --------------------------------------------------------
-        if self.wrds_universe is None:
-            file_path = r".\data\wrds_universe.parquet"
-            if os.path.exists(file_path):
-                logger.info(f"Loading WRDS universe from {file_path}")
-                self.wrds_universe = pd.read_parquet(file_path,
-                                                     index_col='date',
-                                                     parse_dates=['date'])
-            else:
-                logger.error("WRDS universe file not found.")
-                raise ValueError("WRDS universe data is not loaded. Please fetch it first.")
+        if not load_from_cloud:
+            logger.info("Loading data from local disk.")
+            # --------------------------------------------------------
+            # 1. Load WRDS universe if needed
+            # --------------------------------------------------------
+            if self.wrds_universe is None:
+                file_path = r".\data\wrds_universe.parquet"
+                if os.path.exists(file_path):
+                    logger.info(f"Loading WRDS universe from {file_path}")
+                    self.wrds_universe = pd.read_parquet(file_path,
+                                                         index_col='date',
+                                                         parse_dates=['date'])
+                else:
+                    logger.error("WRDS universe file not found.")
+                    raise ValueError("WRDS universe data is not loaded. Please fetch it first.")
 
-        # --------------------------------------------------------
-        # 2. Load tickers_across_dates if needed
-        # --------------------------------------------------------
-        if self.tickers_across_dates is None:
-            file_path = r".\data\tickers_across_dates.pkl"
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                logger.info(f"Loading tickers from {file_path}")
-                try:
-                    with open(file_path, 'rb') as f:
-                        self.tickers_across_dates = pickle.load(f)
-                except Exception as e:
-                    logger.error(f"Error reading {file_path}: {e}")
-                    raise ValueError("Failed to load tickers_across_dates from pickle file.")
-            else:
-                logger.error("Tickers file missing or empty.")
-                raise ValueError("Tickers across dates data is not loaded. Please fetch WRDS universe first.")
+            # --------------------------------------------------------
+            # 2. Load tickers_across_dates if needed
+            # --------------------------------------------------------
+            if self.tickers_across_dates is None:
+                file_path = r".\data\tickers_across_dates.pkl"
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    logger.info(f"Loading tickers from {file_path}")
+                    try:
+                        with open(file_path, 'rb') as f:
+                            self.tickers_across_dates = pickle.load(f)
+                    except Exception as e:
+                        logger.error(f"Error reading {file_path}: {e}")
+                        raise ValueError("Failed to load tickers_across_dates from pickle file.")
+                else:
+                    logger.error("Tickers file missing or empty.")
+                    raise ValueError("Tickers across dates data is not loaded. Please fetch WRDS universe first.")
 
-        # --------------------------------------------------------
-        # 2.2 Load ib_tickers if needed
-        # --------------------------------------------------------
-        if self.crsp_to_ib_mapping_tickers is None:
-            file_path = r".\data\crsp_to_ib_mapping_tickers.pkl"
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                logger.info(f"Loading tickers from {file_path}")
-                try:
-                    with open(file_path, 'rb') as f:
-                        self.crsp_to_ib_mapping_tickers = pickle.load(f)
-                except Exception as e:
-                    logger.error(f"Error reading {file_path}: {e}")
-                    raise ValueError("Failed to load crsp_to_ib_mapping_tickers from pickle file.")
-            else:
-                logger.error("Tickers file missing or empty.")
-                raise ValueError("crsp_to_ib_mapping_tickers not loaded.")
+            # --------------------------------------------------------
+            # 2.2 Load ib_tickers if needed
+            # --------------------------------------------------------
+            if self.crsp_to_ib_mapping_tickers is None:
+                file_path = r".\data\crsp_to_ib_mapping_tickers.pkl"
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    logger.info(f"Loading tickers from {file_path}")
+                    try:
+                        with open(file_path, 'rb') as f:
+                            self.crsp_to_ib_mapping_tickers = pickle.load(f)
+                    except Exception as e:
+                        logger.error(f"Error reading {file_path}: {e}")
+                        raise ValueError("Failed to load crsp_to_ib_mapping_tickers from pickle file.")
+                else:
+                    logger.error("Tickers file missing or empty.")
+                    raise ValueError("crsp_to_ib_mapping_tickers not loaded.")
+        else:
+            logger.info("Loading data from cloud storage.")
+            self.get_files_from_s3()
+            self.wrds_universe = self.s3_files_downloaded['wrds_universe']
+            self.tickers_across_dates = self.s3_files_downloaded['tickers_across_dates']
+            self.crsp_to_ib_mapping_tickers = self.s3_files_downloaded['crsp_to_ib_mapping_tickers']
 
         # --------------------------------------------------------
         # 3. Prepare dict for results
@@ -674,9 +686,18 @@ class DataHandler:
         # --------------------------------------------------------
         # 4. Loop over tickers
         # --------------------------------------------------------
-        for i,ticker in enumerate(self.tickers_across_dates):
-            logger.info(f"Fetching ticker: {ticker} ({i+1}/{len(self.tickers_across_dates)})")
-            print(f"Fetching ticker: {ticker} ({i+1}/{len(self.tickers_across_dates)})")
+        if updating_procedure:
+            # If we are in the updating procedure, there is no need to loop across all tickers across time,
+            # it is sufficient to loop only on the tickers that compose our universe at the last available date.
+            last_date = self.wrds_universe.index.max()
+            subset_last_date = self.wrds_universe.loc[last_date]
+            tickers_to_loop = subset_last_date['ticker'].unique().tolist()
+        else:
+            tickers_to_loop = self.tickers_across_dates
+
+        for i,ticker in enumerate(tickers_to_loop):
+            logger.info(f"Fetching ticker: {ticker} ({i+1}/{len(tickers_to_loop)})")
+            print(f"Fetching ticker: {ticker} ({i+1}/{len(tickers_to_loop)})")
 
             # Extract the most recent data
             subset = wrds_df[wrds_df["ticker"] == ticker]
@@ -745,9 +766,12 @@ class DataHandler:
         # --------------------------------------------------------
         # 5.2 Trim the data to actually keep universe_prices_ib survivorship-bias free!!
         # --------------------------------------------------------
-        logger.info("Trimming IB prices to match WRDS universe tickers per date...")
-        self.trim_data_survivorship_free_ib()
-        logger.info("Trimming completed.")
+        if updating_procedure:
+            pass # No need to trim if updating because we only fetched the last date tickers
+        else:
+            logger.info("Trimming IB prices to match WRDS universe tickers per date...")
+            self.trim_data_survivorship_free_ib()
+            logger.info("Trimming completed.")
 
         # --------------------------------------------------------
         # 6. Save results
@@ -876,7 +900,7 @@ class DataHandler:
         """
         if self.aws_credentials is None:
             try:
-                self.get_credentials(path=r'aws_credentials.txt')
+                self.get_credentials(path=r'.\aws_credentials.txt')
             except Exception as e:
                 logger.error(f"Error loading AWS credentials: {e}")
                 raise ValueError("AWS credentials not loaded. Please provide the credentials file.")
@@ -1008,12 +1032,12 @@ class DataHandler:
 
                 self.s3_files_downloaded[Path(s3_object_name).stem] = file_content
 
-    def update_wrds_gross_query(self,
-                                wrds_request: str,
-                                date_cols: List[str],
-                                saving_config: dict,
-                                return_bool: bool = False
-                                )->None:
+    def update_wrds_data(self,
+                         wrds_request: str,
+                         date_cols: List[str],
+                         saving_config: dict,
+                         return_bool: bool = False
+                         )->dict:
         """
         Update the wrds_gross_query.parquet file with the latest data from WRDS.
         :return:
@@ -1028,8 +1052,8 @@ class DataHandler:
         latest_date_in_current = current_wrds_gross_query['date'].max()
 
         # Request new data from WRDS
-        starting_date_for_update = latest_date_in_current + pd.Timedelta(days=1)
-        # The below function will save in self.wrds_universe th new universe
+        starting_date_for_update = str(pd.to_datetime(latest_date_in_current) + pd.Timedelta(days=1))
+        # The below function will save in self.wrds_universe the new universe
         self.fetch_wrds_historical_universe(wrds_request=wrds_request,
                                             date_cols=date_cols,
                                             starting_date=starting_date_for_update,
@@ -1037,7 +1061,9 @@ class DataHandler:
                                             save_tickers_across_dates=False,
                                             save_dates=False,
                                             return_bool=return_bool,
-                                            crsp_to_ib_mapping_tickers_from_cloud=True
+                                            crsp_to_ib_mapping_tickers_from_cloud=True,
+                                            update_crsp_to_ib_mapping_tickers=True,
+                                            save_ib_tickers_to_cloud=True
                                             )
         # Now we have in self.wrds_gross_query the new data from starting_date_for_update to today
         # In self.wrds_universe we have the new universe from starting_date_for_update to today
@@ -1049,28 +1075,205 @@ class DataHandler:
         # after the latest_date_in_current
         first_date_new_query = self.wrds_gross_query['date'].min()
         if first_date_new_query <= latest_date_in_current:
-            logger.error("The new WRDS query does not contain new data beyond the current latest date.")
-            raise ValueError("The new WRDS query does not contain new data beyond the current latest date.")
+            logger.info("The new WRDS query does not contain new data beyond the current latest date.")
+            # Nothing to update
+            return {}
+
+        if self.wrds_gross_query.empty:
+            logger.info("The new WRDS query returned no new data.")
+            return {}
+
+        # Concatenate the dataframes
+        # First sort both dataframes by date ascending
         updated_wrds_gross_query = pd.concat([current_wrds_gross_query,self.wrds_gross_query],
                                              axis=0,
                                              ignore_index=True)
         # Do the same with self.wrds_universe
         current_wrds_universe = self.s3_files_downloaded['wrds_universe']
+        current_wrds_universe = current_wrds_universe.sort_index(ascending=True)
         # Check the dates
         first_date_new_universe = self.wrds_universe.index.min()
         last_date_current_universe = current_wrds_universe.index.max()
         if first_date_new_universe <= last_date_current_universe:
-            logger.error("The new WRDS universe does not contain new data beyond the current latest date.")
-            raise ValueError("The new WRDS universe does not contain new data beyond the current latest date.")
+            logger.info("The new WRDS universe does not contain new data beyond the current latest date.")
+            return {}
         updated_wrds_universe = pd.concat([current_wrds_universe,self.wrds_universe],
                                          axis=0,
                                          ignore_index=False)
-        # CHECK THE SORTING BEFORE CONCATENATING FOR THE 2 OBJECTS ABOVE.
+        current_tickers_across_dates = self.s3_files_downloaded['tickers_across_dates']
+        new_tickers_across_dates = self.tickers_across_dates
+        updated_tickers_across_dates = list(set(current_tickers_across_dates + new_tickers_across_dates))
+        current_dates = self.s3_files_downloaded['dates']
+        updated_dates = current_dates + self.dates
+        updated_crsp_to_ib_mapping_tickers = self.crsp_to_ib_mapping_tickers
 
+        return {"data/wrds_gross_query.parquet":updated_wrds_gross_query,
+                "data/wrds_universe.parquet":updated_wrds_universe,
+                "data/tickers_across_dates.pkl":updated_tickers_across_dates,
+                "data/dates.pkl":updated_dates,
+                "data/crsp_to_ib_mapping_tickers.pkl":updated_crsp_to_ib_mapping_tickers
+                }
 
+    def update_ib_data(self):
+        """
+        Update the IB historical prices data with the latest data from IB.
+        :return:
+        """
+        if self.ib is None:
+            self.connect_ib()
+        if self.s3_files_downloaded is None or 'ib_historical_prices' not in self.s3_files_downloaded or 'ib_tickers' not in self.s3_files_downloaded:
+            logger.error("IB data not downloaded from S3.")
+            raise ValueError("IB data not downloaded from S3.")
 
+        current_ib_historical_prices = self.s3_files_downloaded['ib_historical_prices']
+        current_ib_tickers = self.s3_files_downloaded['ib_tickers']
+        last_date_in_current = current_ib_historical_prices.index.max()
+        current_date = pd.to_datetime('today').normalize()
+        delta_days = (current_date - last_date_in_current).days
+        if delta_days <= 0:
+            logger.info("IB historical prices data is already up to date.")
+            return
+        past_period = f"{delta_days+2} D" # +2 as security
+        # Fetch new data from IB
+        new_ib_prices = self.fetch_ib_historical_prices(end_date='',
+                                                        past_period=past_period,
+                                                        frequency='1 day',
+                                                        data_prices='ADJUSTED_LAST',
+                                                        use_rth=True,
+                                                        format_date=1,
+                                                        load_from_cloud=True,
+                                                        updating_procedure=True,
+                                                        save_prices=False,
+                                                        return_bool=True
+                                                        )
+        # As we might have retrieved 'too much' days, crop only the new
+        flg = new_ib_prices.index > last_date_in_current
+        new_ib_prices = new_ib_prices.loc[flg,:]
 
+        # Check if there is no negative prices, if any put nan
+        mask = new_ib_prices < 0
+        new_ib_prices = new_ib_prices.mask(mask, np.nan)
+        # Now we have to "merge" the current_ib_historical_prices with new_ib_prices. We must to it with care
+        # because: in the new_ib_prices we only have the tickers that were in the universe at the last date,
+        # so we cannot just do a concat. We have to update only the relevant tickers. If there are new tickers
+        # in new_ib_prices that were not in current_ib_historical_prices, we have to add a new column for them
+        # and make their previous values NaN. For the others tickers (not new and not in the last universe) we
+        # just fill their values with NaN for the new dates.
+        updated_ib_historical_prices = current_ib_historical_prices.copy()
+        # add new rows for new dates. Before, check that the first new date is after the last date in current
+        first_new_date = new_ib_prices.index.min()
+        if first_new_date <= last_date_in_current:
+            logger.info("The new IB prices do not contain new data beyond the current latest date.")
+            return
+        # add new dates
+        updated_ib_historical_prices = pd.concat([updated_ib_historical_prices,
+                                                 pd.DataFrame(index=new_ib_prices.index,
+                                                              columns=updated_ib_historical_prices.columns,
+                                                              data=np.nan)
+                                                  ],
+                                                axis=0,
+                                                ignore_index=False)
+        # Now update the relevant tickers
+        for ticker in new_ib_prices.columns:
+            if ticker in updated_ib_historical_prices.columns:
+                # update existing column
+                updated_ib_historical_prices.loc[new_ib_prices.index, ticker] = new_ib_prices[ticker]
+            else:
+                # add new column
+                updated_ib_historical_prices[ticker] = np.nan
+                updated_ib_historical_prices.loc[new_ib_prices.index, ticker] = new_ib_prices[ticker]
 
+        # re sort for double safety
+        updated_ib_historical_prices.sort_index(inplace=True, ascending=True)
+
+        # Finally, update the ib_tickers list
+        updated_ib_tickers = list(set(current_ib_tickers + new_ib_prices.columns.tolist()))
+
+        return {"data/ib_historical_prices.parquet":updated_ib_historical_prices,
+                "data/ib_tickers.pkl":updated_ib_tickers
+                }
+
+    @staticmethod
+    def replace_existing_files_in_s3(s3: BaseClient,
+                                     bucket_name: str,
+                                     files_dct: dict
+                                     ) -> None:
+
+        """
+        Given a dict with the file names (as the ones in s3) as keys and the file content as values,
+        replace the existing files in s3 with the new content.
+        :return:
+        """
+        # Check data types of inputs
+        if not hasattr(s3, 'put_object'):
+            logger.error("s3 must be a boto3 BaseClient instance.")
+            raise ValueError("s3 must be a boto3 BaseClient instance.")
+        if not isinstance(bucket_name, str):
+            logger.error("bucket_name must be a string.")
+            raise ValueError("bucket_name must be a string.")
+        if not isinstance(files_dct, dict):
+            logger.error("files_dct must be a dictionary.")
+            raise ValueError("files_dct must be a dictionary with file names as keys and file content as values.")
+
+        # Check that the file names (keys of the dict) are all present on s3
+        for file_name in files_dct.keys():
+            try:
+                s3.head_object(Bucket=bucket_name, Key=file_name)
+            except Exception as e:
+                logger.error(f"File {file_name} does not exist in S3 bucket {bucket_name}: {e}")
+                raise ValueError(f"File {file_name} does not exist in S3 bucket {bucket_name}.")
+
+        # Upload new versions first
+        for file_name, content in files_dct.items():
+            ext = file_name.split('.')[-1]
+
+            if ext == "parquet":
+                buffer = io.BytesIO()
+                content.to_parquet(buffer, index=True)
+                buffer.seek(0)
+                body = buffer
+
+            elif ext == "pkl":
+                body = pickle.dumps(content)
+
+            else:
+                raise ValueError(f"Unsupported extension: {file_name}")
+
+            s3.put_object(
+                Bucket=bucket_name,
+                Key=file_name,
+                Body=body
+            )
+            logger.info(f"Uploaded new version of {file_name} to S3 bucket {bucket_name}.")
+
+        # Delete all non-latest versions + delete markers
+        for file_name in files_dct.keys():
+            paginator = s3.get_paginator("list_object_versions")
+
+            to_delete = []
+
+            for page in paginator.paginate(Bucket=bucket_name, Prefix=file_name):
+
+                for v in page.get("Versions", []):
+                    if not v["IsLatest"]:
+                        to_delete.append({
+                            "Key": file_name,
+                            "VersionId": v["VersionId"]
+                        })
+
+                for d in page.get("DeleteMarkers", []):
+                    if not d["IsLatest"]:
+                        to_delete.append({
+                            "Key": file_name,
+                            "VersionId": d["VersionId"]
+                        })
+
+            if to_delete:
+                s3.delete_objects(
+                    Bucket=bucket_name,
+                    Delete={"Objects": to_delete}
+                )
+            logger.info(f"Deleted previous versions of {file_name} in S3 bucket {bucket_name}.")
 
     def update_data(self,
                     wrds_request:str,
@@ -1084,7 +1287,6 @@ class DataHandler:
         - wrds_gross_query.parquet
         - wrds_universe.parquet
         - ib_historical_prices.parquet
-        - ib_historical_prices_dct.pkl
         - tickers_across_dates.pkl
         - dates.pkl
         - crsp_to_ib_mapping_tickers.pkl
@@ -1097,6 +1299,20 @@ class DataHandler:
         if not isinstance(wrds_request, str):
             logger.error("wrds_request must be a string.")
             raise ValueError("wrds_request must be a string containing the SQL query.")
+        if not isinstance(date_cols, list):
+            logger.error("date_cols must be a list of strings.")
+            raise ValueError("date_cols must be a list of strings.")
+        for col in date_cols:
+            if not isinstance(col, str):
+                logger.error("All elements in date_cols must be strings.")
+                raise ValueError("All elements in date_cols must be strings.")
+        if not isinstance(saving_config, dict):
+            logger.error("saving_config must be a dictionary.")
+            raise ValueError("saving_config must be a dictionary.")
+        if not isinstance(return_bool, bool):
+            logger.error("return_bool must be a boolean.")
+            raise ValueError("return_bool must be a boolean.")
+
         # Step 0.2: Connect to AWS S3 if not already connected
         if self.s3 is None:
             try:
@@ -1111,20 +1327,43 @@ class DataHandler:
         # Step 2: Download the current files from s3
         self.get_files_from_s3()
 
-        # Step 3: update each file
-        # 3.1: wrds_gross_query.parquet
-        self.update_wrds_gross_query(wrds_request=wrds_request,
-                                     date_cols=date_cols,
-                                     saving_config=saving_config,
-                                     return_bool=return_bool
-                                     )
+        # Step 3: update wrds files
+        updated_wrds_objects = self.update_wrds_data(wrds_request=wrds_request,
+                                                     date_cols=date_cols,
+                                                     saving_config=saving_config,
+                                                     return_bool=return_bool
+                                                     )
+        # Step 3.1: upload updated wrds files to s3
+        if updated_wrds_objects:
+            logger.info("New WRDS data to update.")
+            self.replace_existing_files_in_s3(s3=self.s3,
+                                              bucket_name=self.bucket_name,
+                                              files_dct=updated_wrds_objects
+                                              )
+            logger.info("Uploaded updated WRDS files to S3.")
+        else:
+            logger.info("No new WRDS data to update.")
 
+        # Wait a bit to ensure the files are available on s3
+        time.sleep(10)
 
+        # Step 4: update ib files
+        updated_ib_objects = self.update_ib_data()
+        if not updated_ib_objects:
+            logger.info("No new IB data to update.")
+            print("No new IB data to update.")
+            return
 
-        #...
+        # Step 4.1: upload updated ib files to s3
+        self.replace_existing_files_in_s3(s3=self.s3,
+                                          bucket_name=self.bucket_name,
+                                          files_dct=updated_ib_objects
+                                          )
 
         self.logout_wrds()
         # s3 automatically closes as it uses short live https requests
+        return
+    # have to create unit tests for update_data
 
 
 
