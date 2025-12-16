@@ -1,22 +1,24 @@
 from configs.config_get_data_first_time  import *
-from packages.data_handler import DataHandler
-from packages.files_utils import FileUtils
+from src.SystematicTradingInfra.data.data_handler import DataHandler
+from src.SystematicTradingInfra.utils.files_utils import FileUtils
 import logging
 
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
-    filename=r'.\outputs\logger.log',
+    filename=LOG_PATH,
     filemode="a",
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
 
-dh = DataHandler(wrds_username=WRDS_USERNAME,
+dh = DataHandler(data_path=DATA_PATH,
+                 wrds_username=WRDS_USERNAME,
                  ib_host=IB_HOST,
                  ib_port=IB_PORT,
                  ib_client_id=IB_CLIENT_ID)
 dh.connect_wrds()
 dh.connect_ib()
-FileUtils.delete_all_files(path=r'.\data', except_git_keep=True)
+FileUtils.delete_all_files(path=DATA_PATH, except_git_keep=True)
 dh.fetch_wrds_historical_universe(wrds_request=WRDS_REQUEST,
                                   starting_date=STARTING_DATE,
                                   date_cols=DATE_COLS,

@@ -35,6 +35,7 @@ class DataHandler:
     Methods:
     """
     def __init__(self,
+                 data_path: Path,
                  wrds_username:str = 'mateo_molinaro',
                  ib_host:str = '127.0.0.1',
                  ib_port:int = 4002,
@@ -46,6 +47,7 @@ class DataHandler:
         """
         Initializes the DataHandler with WRDS and IB connection parameters.
         :parameters:
+        - data_path: path of the data folder.
         - wrds_username: WRDS username for database connection.
         - ib_host: Host address for IB API connection.
         - ib_port: Port number for IB API connection.
@@ -72,6 +74,7 @@ class DataHandler:
         - valid_tickers_per_ib_date: Series of valid tickers per IB date.
         - valid_permnos_per_ib_date: Series of valid PERMNOs per IB date.
         """
+        self.data_path = data_path
         self.wrds_username = wrds_username
         self.ib_host = ib_host
         self.ib_port = ib_port
@@ -126,13 +129,13 @@ class DataHandler:
         self.aws_credentials = None
         self.s3 = None
         self.file_paths_and_s3_object_names = {
-            r'.\data\ib_tickers.pkl':'data/ib_tickers.pkl',
-            r'.\data\crsp_to_ib_mapping_tickers.pkl':'data/crsp_to_ib_mapping_tickers.pkl',
-            r'.\data\wrds_universe.parquet':'data/wrds_universe.parquet',
-            r'.\data\wrds_gross_query.parquet':'data/wrds_gross_query.parquet',
-            r'.\data\ib_historical_prices.parquet':'data/ib_historical_prices.parquet',
-            r'.\data\tickers_across_dates.pkl':'data/tickers_across_dates.pkl',
-            r'.\data\dates.pkl':'data/dates.pkl'
+            self.data_path / "ib_tickers.pkl":"data/ib_tickers.pkl",
+            self.data_path / "crsp_to_ib_mapping_tickers.pkl":"data/crsp_to_ib_mapping_tickers.pkl",
+            self.data_path / "wrds_universe.parquet":"data/wrds_universe.parquet",
+            self.data_path / "wrds_gross_query.parquet":"data/wrds_gross_query.parquet",
+            self.data_path / "ib_historical_prices.parquet":"data/ib_historical_prices.parquet",
+            self.data_path / "tickers_across_dates.pkl":"data/tickers_across_dates.pkl",
+            self.data_path / "dates.pkl":"data/dates.pkl"
         }
         self.bucket_name = "systematic-trading-infra-storage"
         self.s3_files_downloaded = None
@@ -171,7 +174,7 @@ class DataHandler:
         # Load WRDS universe
         if self.wrds_universe is None:
             try:
-                self.wrds_universe = pd.read_parquet(r'.\data\wrds_universe.parquet')
+                self.wrds_universe = pd.read_parquet(self.data_path / "wrds_universe.parquet")
                 self.format_wrds_historical_universe(from_cloud=False)
             except Exception as e:
                 logger.error(f"Error reading WRDS universe: {e}")
@@ -180,7 +183,7 @@ class DataHandler:
         # Load CRSP to IB mapping
         if self.crsp_to_ib_mapping_tickers is None:
             try:
-                with open(r'.\data\crsp_to_ib_mapping_tickers.pkl', 'rb') as f:
+                with open(self.data_path / "crsp_to_ib_mapping_tickers.pkl", "rb") as f:
                     self.crsp_to_ib_mapping_tickers = pickle.load(f)
             except Exception as e:
                 logger.error(f"Error reading crsp_to_ib_mapping_tickers.pkl: {e}")
@@ -189,7 +192,7 @@ class DataHandler:
         # Load ib_historical_prices
         if self.universe_prices_ib is None:
             try:
-                self.universe_prices_ib = pd.read_parquet(r'.\data\ib_historical_prices.parquet')
+                self.universe_prices_ib = pd.read_parquet(self.data_path / "ib_historical_prices.parquet")
                 self.trim_data_survivorship_free_ib()
             except Exception as e:
                 logger.error(f"Error reading IB historical prices: {e}")
@@ -245,7 +248,7 @@ class DataHandler:
 
         if self.tickers_across_dates is None:
             try:
-                with open(r'.\data\tickers_across_dates.pkl', 'rb') as f:
+                with open(self.data_path / "tickers_across_dates.pkl", "rb") as f:
                     self.tickers_across_dates = pickle.load(f)
             except Exception as e:
                 logger.error(f"Error reading tickers_across_dates.pkl: {e}")
@@ -301,7 +304,7 @@ class DataHandler:
 
         if save_mapping_locally:
             # --- Save mapping ---
-            with open(r'.\data\crsp_to_ib_mapping_tickers.pkl', 'wb') as f:
+            with open(self.data_path / "crsp_to_ib_mapping_tickers.pkl", "wb") as f:
                 pickle.dump(self.crsp_to_ib_mapping_tickers, f)
 
         if save_ib_tickers_to_cloud:
@@ -376,12 +379,12 @@ class DataHandler:
                                                                   ascending=True).reset_index(drop=True)
         self.tickers_across_dates = list(self.wrds_gross_query['ticker'].unique())
         if save_tickers_across_dates:
-            with open(r'.\data\tickers_across_dates.pkl', 'wb') as f:
+            with open(self.data_path / "tickers_across_dates.pkl", "wb") as f:
                 pickle.dump(self.tickers_across_dates, f)
 
         self.dates = list(self.wrds_gross_query['date'].unique())
         if save_dates:
-            with open(r'.\data\dates.pkl', 'wb') as f:
+            with open(self.data_path / "dates.pkl", "wb") as f:
                 pickle.dump(self.dates, f)
 
         # Save gross query if specified
@@ -419,7 +422,7 @@ class DataHandler:
     def build_crsp_to_ib_ticker_mapping(self)->None:
         self.crsp_ticker_to_ib_ticker()
         # Saving
-        with open(r'.\data\ib_tickers.pkl', 'wb') as f:
+        with open(self.data_path / "ib_tickers.pkl", "wb") as f:
             pickle.dump(self.ib_tickers, f)
 
     def format_wrds_historical_universe(self,
@@ -430,7 +433,7 @@ class DataHandler:
         """Formats the WRDS historical universe DataFrame."""
         if self.wrds_universe is None:
             try:
-                self.wrds_universe = pd.read_parquet(r'.\data\wrds_universe.parquet')
+                self.wrds_universe = pd.read_parquet(self.data_path / "wrds_universe.parquet")
             except Exception as e:
                 logger.error(f"Error reading WRDS universe: {e}")
                 raise ValueError("WRDS universe data is not loaded. Please fetch it first.")
@@ -438,7 +441,7 @@ class DataHandler:
         if self.crsp_to_ib_mapping_tickers is None:
             if not from_cloud:
                 try:
-                    with open(r'.\data\crsp_to_ib_mapping_tickers.pkl', 'rb') as f:
+                    with open(self.data_path / "crsp_to_ib_mapping_tickers.pkl", "rb") as f:
                         self.crsp_to_ib_mapping_tickers = pickle.load(f)
                 except Exception as e:
                     try:
@@ -524,7 +527,7 @@ class DataHandler:
         """
         if self.wrds_gross_query is None:
             try:
-                self.wrds_gross_query = pd.read_parquet(r'.\data\wrds_gross_query.parquet')
+                self.wrds_gross_query = pd.read_parquet(self.data_path / "wrds_gross_query.parquet")
             except Exception as e:
                 logger.error(f"Error reading WRDS gross query: {e}")
                 raise ValueError("WRDS universe data is not loaded. Please fetch it first.")
@@ -777,9 +780,9 @@ class DataHandler:
         # 6. Save results
         # --------------------------------------------------------
         if save_prices:
-            with open(r'.\data\ib_historical_prices_dct.pkl', 'wb') as f:
+            with open(self.data_path / "ib_historical_prices_dct.pkl", "wb") as f:
                 pickle.dump(ib_prices_dct, f)
-            self.universe_prices_ib.to_parquet(r'.\data\ib_historical_prices.parquet',
+            self.universe_prices_ib.to_parquet(self.data_path / "ib_historical_prices.parquet",
                                                index=True)
             logger.info("Saved historical prices to disk.")
 
@@ -858,7 +861,7 @@ class DataHandler:
         plt.plot(coverage_crsp_tickers_to_ib_tickers)
         plt.title("Convertion rate of CRSP tickers to IB tickers over time")
         # Save fig
-        plt.savefig(r'.\outputs\convertion_rate_crsp_tickers_to_ib_tickers.png')
+        plt.savefig(self.data_path.parent / "outputs" / "figures" / "convertion_rate_crsp_tickers_to_ib_tickers.png")
         plt.close()
 
         # Now compute prices coverage (ib compared to crsp)
@@ -868,11 +871,11 @@ class DataHandler:
         plt.plot(prices_coverage)
         plt.title("Prices coverage of IB over CRSP universe over time")
         # Save fig
-        plt.savefig(r'.\outputs\prices_coverage_ib_over_crsp_universe.png')
+        plt.savefig(self.data_path.parent / "outputs" / "figures" / "prices_coverage_ib_over_crsp_universe.png")
         plt.close()
 
     def get_credentials(self,
-                        path:str,
+                        path:Path,
                         return_bool:bool=False
                         )->dict:
         """
@@ -900,7 +903,7 @@ class DataHandler:
         """
         if self.aws_credentials is None:
             try:
-                self.get_credentials(path=r'.\aws_credentials.txt')
+                self.get_credentials(path=self.data_path.parent / "aws_credentials.txt")
             except Exception as e:
                 logger.error(f"Error loading AWS credentials: {e}")
                 raise ValueError("AWS credentials not loaded. Please provide the credentials file.")
@@ -1049,7 +1052,7 @@ class DataHandler:
             raise ValueError("wrds_gross_query data not downloaded from S3.")
         current_wrds_gross_query = self.s3_files_downloaded['wrds_gross_query']
         current_wrds_gross_query = current_wrds_gross_query.sort_values('date', ascending=True).reset_index(drop=True)
-        latest_date_in_current = current_wrds_gross_query['date'].max()
+        latest_date_in_current = pd.to_datetime(current_wrds_gross_query['date'].max())
 
         # Request new data from WRDS
         starting_date_for_update = str(pd.to_datetime(latest_date_in_current) + pd.Timedelta(days=1))
@@ -1073,8 +1076,8 @@ class DataHandler:
         # We now need to concatenate the current data with the new data
         # Check that we only concatenate the new data by looking if the first date of our new query is
         # after the latest_date_in_current
-        first_date_new_query = self.wrds_gross_query['date'].min()
-        if first_date_new_query <= latest_date_in_current:
+        first_date_new_query = pd.to_datetime(self.wrds_gross_query['date'].min())
+        if pd.isna(first_date_new_query) or first_date_new_query <= latest_date_in_current:
             logger.info("The new WRDS query does not contain new data beyond the current latest date.")
             # Nothing to update
             return {}

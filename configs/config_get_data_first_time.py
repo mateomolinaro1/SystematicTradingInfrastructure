@@ -1,5 +1,8 @@
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[0]
+LOG_PATH = PROJECT_ROOT / "outputs" / "logs" / "logger.log"
+DATA_PATH = PROJECT_ROOT / "data"
 WRDS_USERNAME = 'mateo_molinaro'
 IB_HOST = '127.0.0.1'
 IB_PORT = 4002
@@ -47,22 +50,22 @@ DATE_COLS = [
 
 SAVING_CONFIG_UNIVERSE = {
     'gross_query': {
-        'path': '.\\data\\wrds_gross_query.parquet',
+        'path': DATA_PATH / "wrds_gross_query.parquet",
         'extension': 'parquet'
     },
     'universe': {
-        'path': '.\\data\\wrds_universe.parquet',
+        'path': DATA_PATH / "wrds_universe.parquet",
         'extension': 'parquet'
     },
     'prices': {
-        'path': '.\\data\\wrds_historical_prices.parquet',
+        'path': DATA_PATH / "wrds_historical_prices.parquet",
         'extension': 'parquet'
     }
 }
 RETURN_BOOL_UNIVERSE = False
 SAVING_CONFIG_PRICES = {
     'prices': {
-        'path': '.\\data\\wrds_universe_prices.parquet',
+        'path': DATA_PATH / "wrds_universe_prices.parquet",
         'extension': 'parquet'
     }
 }

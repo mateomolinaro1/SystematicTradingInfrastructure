@@ -1,5 +1,8 @@
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[0]
+DATA_PATH = PROJECT_ROOT / "data"
+LOG_PATH = PROJECT_ROOT / "outputs" / "logs" / "logger.log"
 WRDS_USERNAME = 'mateo_molinaro'
 IB_HOST = '127.0.0.1'
 IB_PORT = 4002

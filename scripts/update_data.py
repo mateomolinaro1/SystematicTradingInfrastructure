@@ -1,15 +1,18 @@
 from configs.config_update_data  import *
-from packages.data_handler import DataHandler
+from src.SystematicTradingInfra.data.data_handler import DataHandler
+from pathlib import Path
 import logging
 
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
-    filename=r'.\outputs\logger.log',
+    filename=LOG_PATH,
     filemode="a",
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
 
-dh = DataHandler(wrds_username=WRDS_USERNAME,
+dh = DataHandler(data_path=DATA_PATH,
+                 wrds_username=WRDS_USERNAME,
                  ib_host=IB_HOST,
                  ib_port=IB_PORT,
                  ib_client_id=IB_CLIENT_ID)
