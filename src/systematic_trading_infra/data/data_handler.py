@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import time
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Dict, Optional
 import logging
 import wrds
 from ib_insync import *
@@ -14,6 +14,8 @@ import boto3
 from botocore.client import BaseClient
 from pathlib import Path
 import io
+from src.systematic_trading_infra.utils.alerts import PushoverAlters
+from src.systematic_trading_infra.utils.s3_utils import s3Utils
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +38,15 @@ class DataHandler:
     """
     def __init__(self,
                  data_path: Path,
-                 wrds_username:str = 'mateo_molinaro',
+                 wrds_username:str,
+                 wrds_password:str,
+                 bucket_name:str,
                  ib_host:str = '127.0.0.1',
                  ib_port:int = 4002,
                  ib_client_id:int = 1,
                  pause = 0.40,
                  retries = 3,
-                 reconnect_wait = 2
+                 reconnect_wait = 2,
     )->None:
         """
         Initializes the DataHandler with WRDS and IB connection parameters.
@@ -76,6 +80,7 @@ class DataHandler:
         """
         self.data_path = data_path
         self.wrds_username = wrds_username
+        self.wrds_password = wrds_password
         self.ib_host = ib_host
         self.ib_port = ib_port
         self.ib_client_id = ib_client_id
@@ -85,6 +90,8 @@ class DataHandler:
 
         self.wrds_db = None
         self.ib = None
+        self._manual_disconnect = False
+        self._shutting_down = False
 
         self.wrds_gross_query = None
         self.crsp_to_ib_mapping_tickers = None
@@ -135,14 +142,16 @@ class DataHandler:
             self.data_path / "wrds_gross_query.parquet":"data/wrds_gross_query.parquet",
             self.data_path / "ib_historical_prices.parquet":"data/ib_historical_prices.parquet",
             self.data_path / "tickers_across_dates.pkl":"data/tickers_across_dates.pkl",
-            self.data_path / "dates.pkl":"data/dates.pkl"
+            self.data_path / "dates.pkl":"data/dates.pkl",
+            self.data_path / "portfolio_value_historical.parquet":"paper_trading/portfolio_value_historical.parquet"
         }
-        self.bucket_name = "systematic-trading-infra-storage"
+        self.bucket_name = bucket_name
         self.s3_files_downloaded = None
 
     def connect_wrds(self):
         """Establishes a connection to the WRDS database using the provided username."""
-        self.wrds_db = wrds.Connection(wrds_username=self.wrds_username)
+        self.wrds_db = wrds.Connection(wrds_username=self.wrds_username,
+                                       wrds_password=self.wrds_password)
 
     def logout_wrds(self):
         """Logs out from the WRDS database connection."""
@@ -150,16 +159,82 @@ class DataHandler:
             self.wrds_db.close()
             self.wrds_db = None
 
+    # def connect_ib(self):
+    #     """Establishes a connection to the Interactive Brokers API using the provided host, port, and client ID."""
+    #     if self.ib is None:
+    #         self.ib = IB()
+    #         # when ib disconnect, call self.on_ib_disconnected (operator overloading)
+    #         self.ib.disconnectedEvent += lambda: self.on_ib_disconnected()
+    #
+    #
+    #     if not self.ib.isConnected():
+    #         self.ib.connect(host=self.ib_host,
+    #                         port=self.ib_port,
+    #                         clientId=self.ib_client_id)
+    #
+    #         self.ib.sleep(1)
+    #         logger.info("Connected to IB.")
     def connect_ib(self):
-        """Establishes a connection to the Interactive Brokers API using the provided host, port, and client ID."""
-        self.ib = IB()
-        self.ib.connect(host=self.ib_host,
-                        port=self.ib_port,
-                        clientId=self.ib_client_id)
+        if self.ib is None:
+            self.ib = IB()
+
+        if not self.ib.isConnected():
+            self._manual_disconnect = False
+            self._shutting_down = False
+            self.ib.connect(
+                host=self.ib_host,
+                port=self.ib_port,
+                clientId=self.ib_client_id
+            )
+            self.ib.disconnectedEvent += lambda *args: self.on_ib_disconnected(*args)
+            self.ib.sleep(1)
+            logger.info("Connected to IB.")
+
+    # 'Manual' check. Will be called before requesting
+    def ensure_ib_connection(self):
+        if not self.ib.isConnected():
+            logger.warning("IB disconnected — reconnecting...")
+            self.connect_ib()
+            self.ib.sleep(2)
+
+    # As between the above check and the moment ib request, ib can still disconnect, we need a
+    # method that is automatically triggered on event, when ib disconnect. This is what the below
+    # Function does.
+    def on_ib_disconnected(self, *args):
+        if self._shutting_down:
+            logger.info("IB disconnect during shutdown — ignoring.")
+            return
+
+        if self._manual_disconnect:
+            logger.info("IB disconnected manually — no reconnection needed.")
+            return
+
+        logger.warning("IB disconnected unexpectedly — reconnecting...")
+
+        try:
+            # if self.ib.isConnected():
+            #     self.ib.disconnect()
+
+            self.ib.connect(
+                host=self.ib_host,
+                port=self.ib_port,
+                clientId=self.ib_client_id
+            )
+
+            # Give IB time
+            self.ib.sleep(2)
+
+            logger.info("IB reconnected successfully.")
+
+        except Exception as e:
+            logger.error(f"IB reconnection failed: {e}")
 
     def logout_ib(self):
         """Disconnects from the Interactive Brokers API."""
-        if self.ib is not None:
+        if self.ib is not None and self.ib.isConnected():
+            logger.info("Disconnecting from IB (manual).")
+            self._shutting_down = True
+            self._manual_disconnect = True
             self.ib.disconnect()
             self.ib = None
 
@@ -591,7 +666,7 @@ class DataHandler:
         # --------------------------------------------------------
         # 0. Ensure IB connection
         # --------------------------------------------------------
-        if self.ib is None:
+        if self.ib is None or not self.ib.isConnected():
             logger.info("IB connection not found — attempting to reconnect.")
             self.connect_ib()
             logger.info("Connected to IB.")
@@ -668,6 +743,7 @@ class DataHandler:
             """
             while True:
                 try:
+                    self.ensure_ib_connection()
                     return self.ib.reqHistoricalData(
                         contract=contract_ib,
                         endDateTime=end_date,
@@ -682,7 +758,7 @@ class DataHandler:
                     if "pacing" in msg or "rate" in msg or "violation" in msg:
                         print("! Pacing violation -> waiting 30 seconds before retrying...")
                         logger.warning(f"Pacing violation for {contract_ib.symbol}, retrying...")
-                        time.sleep(30)
+                        self.ib.sleep(30)
                     else:
                         raise
 
@@ -729,6 +805,7 @@ class DataHandler:
             # Validate contract
             # --------------------------------------------------------
             try:
+                self.ensure_ib_connection()
                 details = self.ib.reqContractDetails(contract)
                 if not details:
                     print(f"!! IB cannot identify contract for ticker {ib_ticker}. Skipping.")
@@ -758,7 +835,7 @@ class DataHandler:
             ib_prices_dct[ib_ticker] = df.loc[:,['date', 'close']].set_index('date').rename(columns={'close':ib_ticker})
 
             # anti rate limit sleep
-            time.sleep(11)
+            self.ib.sleep(1.2)
 
         # --------------------------------------------------------
         # 5. Format into a single dataframe
@@ -792,6 +869,27 @@ class DataHandler:
         # --------------------------------------------------------
         if return_bool:
             return self.universe_prices_ib
+
+    def fetch_portfolio_value(self,
+                              saving_path_pv:str|None,
+                              return_bool:int=False)->pd.DataFrame|None:
+        if self.ib is None:
+            self.connect_ib()
+        values = self.ib.accountValues()
+        portfolio_value = float(next(v.value for v in values if v.tag == 'NetLiquidation'))
+        df = pd.DataFrame(index=pd.Series(pd.Timestamp.today().normalize()),
+                          data=portfolio_value,
+                          columns=["portfolio_value"])
+
+        if return_bool:
+            return df
+
+        if saving_path_pv is not None:
+            df.to_parquet(path=saving_path_pv)
+        # else:
+        #     logger.info("ib must be connected before requesting portfolio value")
+        #     print("ib must be connected before requesting portfolio value")
+        #     return None
 
     @staticmethod
     def format_ib_historical_prices(ib_prices_dct: dict) -> pd.DataFrame:
@@ -875,24 +973,30 @@ class DataHandler:
         plt.close()
 
     def get_credentials(self,
-                        path:Path,
                         return_bool:bool=False
-                        )->dict:
+                        )->Dict[str, str]:
         """
-        Load credentials from a given path.
+        Load credentials from .env .
         :param:
-        - path: path to the credentials file.
         - return_bool: If True, returns the credentials dict.
         :return: a dict containing the credentials.
         """
         creds = {}
-        with open(path) as f:
-            for line in f:
-                if "=" in line:
-                    key, value = line.strip().split("=")
-                    creds[key] = value
+        for key in ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]:
+            val = os.getenv(key)
+            if val is not None:
+                creds[key] = val
+
+        required = ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]
+        missing = [k for k in required if k not in creds]
+
+        if missing:
+            logger.error(f"Missing credentials: {missing}")
+            raise RuntimeError(f"Missing credentials: {missing}")
+
         if self.aws_credentials is None:
             self.aws_credentials = creds
+
         if return_bool:
             return creds
 
@@ -903,7 +1007,7 @@ class DataHandler:
         """
         if self.aws_credentials is None:
             try:
-                self.get_credentials(path=self.data_path.parent / "aws_credentials.txt")
+                self.get_credentials()
             except Exception as e:
                 logger.error(f"Error loading AWS credentials: {e}")
                 raise ValueError("AWS credentials not loaded. Please provide the credentials file.")
@@ -1056,6 +1160,7 @@ class DataHandler:
 
         # Request new data from WRDS
         starting_date_for_update = str(pd.to_datetime(latest_date_in_current) + pd.Timedelta(days=1))
+
         # The below function will save in self.wrds_universe the new universe
         self.fetch_wrds_historical_universe(wrds_request=wrds_request,
                                             date_cols=date_cols,
@@ -1097,6 +1202,20 @@ class DataHandler:
         # Check the dates
         first_date_new_universe = self.wrds_universe.index.min()
         last_date_current_universe = current_wrds_universe.index.max()
+
+        # Send phone alerts to monitor when away from computer
+        msg = "last date old wrds universe " + str(last_date_current_universe)
+        PushoverAlters.send_pushover(pushover_user=os.getenv("PUSHOVER_USER_KEY"),
+                                     pushover_token=os.getenv("PUSHOVER_APP_TOKEN"),
+                                     message=msg,
+                                     title="Systematic Trading Infra")
+
+        msg = "first date new wrds universe " + str(first_date_new_universe)
+        PushoverAlters.send_pushover(pushover_user=os.getenv("PUSHOVER_USER_KEY"),
+                                     pushover_token=os.getenv("PUSHOVER_APP_TOKEN"),
+                                     message=msg,
+                                     title="Systematic Trading Infra")
+
         if first_date_new_universe <= last_date_current_universe:
             logger.info("The new WRDS universe does not contain new data beyond the current latest date.")
             return {}
@@ -1122,7 +1241,7 @@ class DataHandler:
         Update the IB historical prices data with the latest data from IB.
         :return:
         """
-        if self.ib is None:
+        if self.ib is None or not self.ib.isConnected():
             self.connect_ib()
         if self.s3_files_downloaded is None or 'ib_historical_prices' not in self.s3_files_downloaded or 'ib_tickers' not in self.s3_files_downloaded:
             logger.error("IB data not downloaded from S3.")
@@ -1165,6 +1284,20 @@ class DataHandler:
         updated_ib_historical_prices = current_ib_historical_prices.copy()
         # add new rows for new dates. Before, check that the first new date is after the last date in current
         first_new_date = new_ib_prices.index.min()
+
+        # Send phone alerts to monitor when away from computer
+        msg = "last date old ib prices " + str(last_date_in_current)
+        PushoverAlters.send_pushover(pushover_user=os.getenv("PUSHOVER_USER_KEY"),
+                                     pushover_token=os.getenv("PUSHOVER_APP_TOKEN"),
+                                     message=msg,
+                                     title="Systematic Trading Infra")
+
+        msg = "first date new ib prices " + str(first_new_date)
+        PushoverAlters.send_pushover(pushover_user=os.getenv("PUSHOVER_USER_KEY"),
+                                     pushover_token=os.getenv("PUSHOVER_APP_TOKEN"),
+                                     message=msg,
+                                     title="Systematic Trading Infra")
+
         if first_new_date <= last_date_in_current:
             logger.info("The new IB prices do not contain new data beyond the current latest date.")
             return
@@ -1196,93 +1329,49 @@ class DataHandler:
                 "data/ib_tickers.pkl":updated_ib_tickers
                 }
 
-    @staticmethod
-    def replace_existing_files_in_s3(s3: BaseClient,
-                                     bucket_name: str,
-                                     files_dct: dict
-                                     ) -> None:
+    def update_portfolio_value(self):
+        old_pv = self.s3_files_downloaded["portfolio_value_historical"]
+        old_pv = old_pv.sort_index(ascending=True)
+        new_pv = self.fetch_portfolio_value(saving_path_pv=None, return_bool=True)
 
-        """
-        Given a dict with the file names (as the ones in s3) as keys and the file content as values,
-        replace the existing files in s3 with the new content.
-        :return:
-        """
-        # Check data types of inputs
-        if not hasattr(s3, 'put_object'):
-            logger.error("s3 must be a boto3 BaseClient instance.")
-            raise ValueError("s3 must be a boto3 BaseClient instance.")
-        if not isinstance(bucket_name, str):
-            logger.error("bucket_name must be a string.")
-            raise ValueError("bucket_name must be a string.")
-        if not isinstance(files_dct, dict):
-            logger.error("files_dct must be a dictionary.")
-            raise ValueError("files_dct must be a dictionary with file names as keys and file content as values.")
-
-        # Check that the file names (keys of the dict) are all present on s3
-        for file_name in files_dct.keys():
-            try:
-                s3.head_object(Bucket=bucket_name, Key=file_name)
-            except Exception as e:
-                logger.error(f"File {file_name} does not exist in S3 bucket {bucket_name}: {e}")
-                raise ValueError(f"File {file_name} does not exist in S3 bucket {bucket_name}.")
-
-        # Upload new versions first
-        for file_name, content in files_dct.items():
-            ext = file_name.split('.')[-1]
-
-            if ext == "parquet":
-                buffer = io.BytesIO()
-                content.to_parquet(buffer, index=True)
-                buffer.seek(0)
-                body = buffer
-
-            elif ext == "pkl":
-                body = pickle.dumps(content)
-
+        # Check the date is new
+        last_date_old = old_pv.index[-1]
+        first_date_new = new_pv.index[-1] #-1 or 0 is the same as it only contains 1 value
+        if first_date_new<=last_date_old:
+            logger.info("No new value for portfolio_value")
+            print("No new value for portfolio_value")
+            return
+        else:
+            # Include all dates even non-business days, but we would have to be careful
+            # when manipulating with others df -> do a merge
+            missing_dates = pd.date_range(start=last_date_old,
+                                          end=first_date_new,
+                                          inclusive="neither")
+            if missing_dates.empty:
+                # just concatenate
+                updated_pv = pd.concat([old_pv,new_pv], axis=0)
+                updated_pv = updated_pv.sort_index(ascending=True)
             else:
-                raise ValueError(f"Unsupported extension: {file_name}")
+                df_missing = pd.DataFrame(index=missing_dates,
+                                          data=np.nan,
+                                          columns=["portfolio_value"])
+                updated_pv = pd.concat([old_pv,df_missing,new_pv], axis=0)
+                updated_pv = updated_pv.sort_index(ascending=True)
 
-            s3.put_object(
-                Bucket=bucket_name,
-                Key=file_name,
-                Body=body
-            )
-            logger.info(f"Uploaded new version of {file_name} to S3 bucket {bucket_name}.")
+        updated_pv = updated_pv[~updated_pv.index.duplicated(keep="last")]
 
-        # Delete all non-latest versions + delete markers
-        for file_name in files_dct.keys():
-            paginator = s3.get_paginator("list_object_versions")
+        return {"paper_trading/portfolio_value_historical.parquet":updated_pv}
 
-            to_delete = []
-
-            for page in paginator.paginate(Bucket=bucket_name, Prefix=file_name):
-
-                for v in page.get("Versions", []):
-                    if not v["IsLatest"]:
-                        to_delete.append({
-                            "Key": file_name,
-                            "VersionId": v["VersionId"]
-                        })
-
-                for d in page.get("DeleteMarkers", []):
-                    if not d["IsLatest"]:
-                        to_delete.append({
-                            "Key": file_name,
-                            "VersionId": d["VersionId"]
-                        })
-
-            if to_delete:
-                s3.delete_objects(
-                    Bucket=bucket_name,
-                    Delete={"Objects": to_delete}
-                )
-            logger.info(f"Deleted previous versions of {file_name} in S3 bucket {bucket_name}.")
 
     def update_data(self,
                     wrds_request:str,
                     date_cols: List[str],
                     saving_config: dict,
-                    return_bool: bool = False
+                    pushover_user:str,
+                    pushover_token:str,
+                    return_bool: bool = False,
+                    coverage_threshold: float = 0.9,
+                    max_tries: int = 3
                     )->None:
         """
         Update the WRDS and IB data to the latest available.
@@ -1294,6 +1383,10 @@ class DataHandler:
         - dates.pkl
         - crsp_to_ib_mapping_tickers.pkl
         - ib_tickers.pkl
+        - coverage_threshold: nb of not nan prices at the moment we update the data compared to the
+            previous date. If we recover less than coverage_threshold for this update, we will redo it
+            max_tries times.
+        - max_tries: see above
         It will download these current files from s3, then update them with the latest data from WRDS and IB,
         and finally re-upload the updated files to s3.
         :return: None
@@ -1315,6 +1408,8 @@ class DataHandler:
         if not isinstance(return_bool, bool):
             logger.error("return_bool must be a boolean.")
             raise ValueError("return_bool must be a boolean.")
+
+        logger.info("Updating data.")
 
         # Step 0.2: Connect to AWS S3 if not already connected
         if self.s3 is None:
@@ -1339,7 +1434,7 @@ class DataHandler:
         # Step 3.1: upload updated wrds files to s3
         if updated_wrds_objects:
             logger.info("New WRDS data to update.")
-            self.replace_existing_files_in_s3(s3=self.s3,
+            s3Utils.replace_existing_files_in_s3(s3=self.s3,
                                               bucket_name=self.bucket_name,
                                               files_dct=updated_wrds_objects
                                               )
@@ -1350,6 +1445,19 @@ class DataHandler:
         # Wait a bit to ensure the files are available on s3
         time.sleep(10)
 
+        # Step 4.0 update portfolio_value
+        # For the orders df we also need to store the historical portfolio value
+        updated_pv = self.update_portfolio_value()
+        if updated_pv:
+            logger.info("New portfolio value data to update.")
+            s3Utils.replace_existing_files_in_s3(s3=self.s3,
+                                                 bucket_name=self.bucket_name,
+                                                 files_dct=updated_pv
+                                                 )
+            logger.info("Uploaded updated portfolio value file to S3.")
+        else:
+            logger.info("No new portfolio value data to update.")
+
         # Step 4: update ib files
         updated_ib_objects = self.update_ib_data()
         if not updated_ib_objects:
@@ -1357,14 +1465,36 @@ class DataHandler:
             print("No new IB data to update.")
             return
 
+        # Checking that the coverage we get for prices is correct, if not redo the update
+        notna = updated_ib_objects["data/ib_historical_prices.parquet"].notna().sum(axis=1)
+        notna_prevdate = notna.iloc[-2]
+        notna_current = notna.iloc[-1]
+        tries = 0
+
+        while (notna_current/notna_prevdate<coverage_threshold) and (tries<=max_tries):
+            updated_ib_objects = self.update_ib_data()
+            tries+=1
+            logger.info(f"We got poor coverage of non nan prices while updating. Redoing the update for the {tries} time.")
+            print(f"We got poor coverage of non nan prices while updating. Redoing the update for the {tries} time.")
+            PushoverAlters.send_pushover(pushover_user=pushover_user,
+                                         pushover_token=pushover_token,
+                                         message=f"Bad coverage: {round(notna_current/notna_prevdate*100,2)}%. Retrying for {tries} time.",
+                                         title="Systematic Trading Infra")
+
         # Step 4.1: upload updated ib files to s3
-        self.replace_existing_files_in_s3(s3=self.s3,
+        s3Utils.replace_existing_files_in_s3(s3=self.s3,
                                           bucket_name=self.bucket_name,
                                           files_dct=updated_ib_objects
                                           )
 
         self.logout_wrds()
+        self.logout_ib()
         # s3 automatically closes as it uses short live https requests
+
+        PushoverAlters.send_pushover(pushover_user=pushover_user,
+                                     pushover_token=pushover_token,
+                                     message=f"Coverage: {round(notna_current / notna_prevdate * 100, 2)}%.",
+                                     title="Systematic Trading Infra")
         return
     # have to create unit tests for update_data
 

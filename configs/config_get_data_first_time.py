@@ -1,12 +1,8 @@
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[0]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LOG_PATH = PROJECT_ROOT / "outputs" / "logs" / "logger.log"
 DATA_PATH = PROJECT_ROOT / "data"
-WRDS_USERNAME = 'mateo_molinaro'
-IB_HOST = '127.0.0.1'
-IB_PORT = 4002
-IB_CLIENT_ID = 1
 
 # At least, the query must retrieve the following columns:
 # ['ticker','exchcd','cusip','ncusip','comnam','permno','permco','namedt','nameendt','date']
@@ -82,3 +78,6 @@ FORMAT_DATE = 1
 SAVE_PRICES = True
 RETURN_BOOL_IB_PRICES = False
 PUSH_TO_CLOUD = False
+BUCKET_NAME = "systematic-trading-infra-storage"
+SAVING_PATH_PV = DATA_PATH / "portfolio_value_historical.parquet"
+RET_BOOL_PV = False

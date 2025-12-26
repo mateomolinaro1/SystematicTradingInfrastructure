@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from SystematicTradingInfra.data.data_handler import DataHandler
+from systematic_trading_infra.data.data_handler import DataHandler
 
 
 def test_get_wrds_historical_prices_success(tmp_path):

@@ -2,7 +2,7 @@ import pickle
 import pandas as pd
 import pytest
 
-from SystematicTradingInfra.data.data_handler import DataHandler
+from systematic_trading_infra.data.data_handler import DataHandler
 
 
 def test_load_data_success(tmp_path):

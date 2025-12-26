@@ -1,4 +1,4 @@
-from SystematicTradingInfra.utils.files_utils import FileUtils
+from systematic_trading_infra.utils.files_utils import FileUtils
 from pathlib import Path
 import pytest
 

@@ -4,18 +4,22 @@ __pycache__/
 *.pyo
 *.pyd
 
-.venv/
-.idea/
+# Git
+.gitignore
 .git
 
+# Virtual env
+.venv/
+
+# Data
 data/*
 !data/.gitkeep
 
+# Others
 SAVED/
 
 outputs/convertion_rate_crsp_tickers_to_ib_tickers.png
 outputs/prices_coverage_ib_over_crsp_universe.png
-
 outputs/plots_saved
 
 outputs/figures/*
@@ -32,6 +36,7 @@ outputs/reports/*
 sandbox.txt
 wrds_requests.txt
 aws_credentials.txt
-.env
 
-
+# Secrets
+#.env
+#!outputs/logger.log
