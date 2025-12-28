@@ -6,10 +6,21 @@ import boto3
 from botocore.client import BaseClient
 import io
 import os
+import pyarrow.fs as pafs
+
 
 logger = logging.getLogger(__name__)
 
 class s3Utils:
+    @staticmethod
+    def get_pyarrow_s3_filesystem():
+        return pafs.S3FileSystem(
+            access_key=os.getenv("AWS_ACCESS_KEY_ID"),
+            secret_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            session_token=os.getenv("AWS_SESSION_TOKEN"),
+            region=os.getenv("AWS_DEFAULT_REGION"),
+        )
+
     @staticmethod
     def push_object_to_s3_parquet(object_to_push:pd.DataFrame,
                                   path:str)->None:
@@ -26,9 +37,12 @@ class s3Utils:
             logger.error("path must be a str")
             raise ValueError("path must be a str")
 
+        fs = s3Utils.get_pyarrow_s3_filesystem()
+
         object_to_push.to_parquet(
             path=path,
-            engine="pyarrow"
+            engine="pyarrow",
+            filesystem=fs,
         )
         return
 
@@ -52,8 +66,10 @@ class s3Utils:
         if not isinstance(path, str):
             logger.error("path must be a str.")
             raise ValueError("path must be a str.")
+        fs = s3Utils.get_pyarrow_s3_filesystem()
         res = pd.read_parquet(path=path,
-                              engine="pyarrow"
+                              engine="pyarrow",
+                              filesystem=fs
                               )
         return res
 
@@ -165,42 +181,42 @@ class s3Utils:
                 )
             logger.info(f"Deleted previous versions of {file_name} in S3 bucket {bucket_name}.")
 
-    @staticmethod
-    def get_credentials(return_bool:bool=False
-                        )->Dict[str, str]:
-        """
-        Load credentials from .env .
-        :param:
-        - return_bool: If True, returns the credentials dict.
-        :return: a dict containing the credentials.
-        """
-        creds = {}
-        for key in ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]:
-            val = os.getenv(key)
-            if val is not None:
-                creds[key] = val
-
-        required = ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]
-        missing = [k for k in required if k not in creds]
-
-        if missing:
-            logger.error(f"Missing credentials: {missing}")
-            raise RuntimeError(f"Missing credentials: {missing}")
-
-        if return_bool:
-            return creds
-
-    @staticmethod
-    def connect_aws_s3(creds)->BaseClient:
-        """
-        Connect to AWS S3 using the loaded credentials.
-        :return: boto3 S3 client.
-        """
-
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=creds["KEY"],
-            aws_secret_access_key=creds["SECRET_KEY"],
-            region_name=creds["REGION"]
-        )
-        return s3
+    # @staticmethod
+    # def get_credentials(return_bool:bool=False
+    #                     )->Dict[str, str]:
+    #     """
+    #     Load credentials from .env .
+    #     :param:
+    #     - return_bool: If True, returns the credentials dict.
+    #     :return: a dict containing the credentials.
+    #     """
+    #     creds = {}
+    #     for key in ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]:
+    #         val = os.getenv(key)
+    #         if val is not None:
+    #             creds[key] = val
+    #
+    #     required = ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]
+    #     missing = [k for k in required if k not in creds]
+    #
+    #     if missing:
+    #         logger.error(f"Missing credentials: {missing}")
+    #         raise RuntimeError(f"Missing credentials: {missing}")
+    #
+    #     if return_bool:
+    #         return creds
+    #
+    # @staticmethod
+    # def connect_aws_s3(creds)->BaseClient:
+    #     """
+    #     Connect to AWS S3 using the loaded credentials.
+    #     :return: boto3 S3 client.
+    #     """
+    #
+    #     s3 = boto3.client(
+    #         's3',
+    #         aws_access_key_id=creds["KEY"],
+    #         aws_secret_access_key=creds["SECRET_KEY"],
+    #         region_name=creds["REGION"]
+    #     )
+    #     return s3

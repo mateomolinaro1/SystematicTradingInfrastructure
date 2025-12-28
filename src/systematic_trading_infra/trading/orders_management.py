@@ -1,15 +1,15 @@
 import time
 from datetime import date
-
-import numpy as np
 import pandas as pd
-from src.systematic_trading_infra.utils.s3_utils import s3Utils
-from src.systematic_trading_infra.utils.ib_utils import IbUtils
-from src.systematic_trading_infra.backtester.backtester_orchestrator import BacktesterOrchestrator
-from src.systematic_trading_infra.utils.alerts import PushoverAlters
+import numpy as np
+from systematic_trading_infra.utils.s3_utils import s3Utils
+from systematic_trading_infra.utils.ib_utils import IbUtils
+from systematic_trading_infra.backtester.backtester_orchestrator import BacktesterOrchestrator
+from systematic_trading_infra.utils.alerts import PushoverAlters
 from typing import List, Tuple
 import logging
 import os
+import boto3
 
 logger = logging.getLogger(__name__)
 
@@ -45,28 +45,6 @@ class OrdersManagement:
         self.prices_at_rebal = None
         self.wrds_universe = None
         self.wrds_universe_at_rebal = None
-
-    @staticmethod
-    def create_new_object(new_orders_s3_path: str,
-                          new_strat_weights_s3_path: str,
-                          new_strat_net_returns_from_backtester: pd.DataFrame,
-                          new_strat_start_date_from_backtester: pd.Timestamp,
-                          new_prices_from_data_manager_cleaned_data: pd.DataFrame,
-                          new_wrds_universe_s3_path,
-                          new_initial_invested_amount_backtest: float | int = 1000000,
-                          new_buffer: float = 0.02):
-
-        new_obj = OrdersManagement(
-            orders_s3_path=new_orders_s3_path,
-            strat_weights_s3_path=new_strat_weights_s3_path,
-            strat_net_returns_from_backtester=new_strat_net_returns_from_backtester,
-            strat_start_date_from_backtester=new_strat_start_date_from_backtester,
-            prices_from_data_manager_cleaned_data=new_prices_from_data_manager_cleaned_data,
-            wrds_universe_s3_path=new_wrds_universe_s3_path,
-            initial_invested_amount_backtest=new_initial_invested_amount_backtest,
-            buffer=new_buffer
-        )
-        return new_obj
 
     def build_orders_first_time(self)->None:
         if self.strat_weights is None:
@@ -214,7 +192,7 @@ class OrdersManagement:
         # 1. Load historical orders
         # --------------------------------------------------
         old_orders = s3Utils.pull_parquet_file_from_s3(
-            path="s3://systematic-trading-infra-storage/paper_trading/orders.parquet"
+            path="systematic-trading-infra-storage/paper_trading/orders.parquet"
         )
         old_orders["date"] = pd.to_datetime(old_orders["date"])
         last_order_date = old_orders["date"].max()
@@ -223,7 +201,7 @@ class OrdersManagement:
         # 2. Identify rebalancing dates
         # --------------------------------------------------
         strat_weights = s3Utils.pull_parquet_file_from_s3(
-            path="s3://systematic-trading-infra-storage/paper_trading/weights.parquet"
+            path="systematic-trading-infra-storage/paper_trading/weights.parquet"
         )
         flg = strat_weights.notna().any(axis=1)
         sub_w = strat_weights.loc[flg]
@@ -255,7 +233,7 @@ class OrdersManagement:
         # 4. Pull portfolio value from S3
         # --------------------------------------------------
         portfolio_value = s3Utils.pull_parquet_file_from_s3(
-            path="s3://systematic-trading-infra-storage/paper_trading/portfolio_value_historical.parquet"
+            path="systematic-trading-infra-storage/paper_trading/portfolio_value_historical.parquet"
         )
         portfolio_value = portfolio_value.sort_index()
 
@@ -337,7 +315,7 @@ class OrdersManagement:
         # 10. Enrich new orders with currency & exchange
         # --------------------------------------------------
         wrds_universe = s3Utils.pull_parquet_file_from_s3(
-            path="s3://systematic-trading-infra-storage/data/wrds_universe.parquet"
+            path="systematic-trading-infra-storage/data/wrds_universe.parquet"
         )
 
         wrds_universe = wrds_universe.sort_index()
@@ -410,7 +388,7 @@ class OrdersManagement:
 
         if not first_date_new > last_date_old:
             print("No new " + df_name + " during update.")
-            logger.info("No new signals_values during update.")
+            logger.info("No new " + df_name + " during update.")
             return None
         if not isinstance(old_signals_values.index, pd.DatetimeIndex):
             logger.error("old_signals_values index must be DatetimeIndex")
@@ -458,8 +436,7 @@ class OrdersManagement:
                                     transaction_costs_bench: int | float = 10,
                                     strategy_name_bench: str = "Bench Buy-and-Hold EW",
                                     performance_analysis: bool = False,
-                                    freq_data: str | None = None,
-                                    saving_path_plot: str | None = None
+                                    freq_data: str | None = None
                                     )->None:
 
         # Step 0: Check if the current files are on s3
@@ -493,8 +470,7 @@ class OrdersManagement:
             transaction_costs_bench=transaction_costs_bench,
             strategy_name_bench=strategy_name_bench,
             performance_analysis=performance_analysis,
-            freq_data=freq_data,
-            saving_path_plot=saving_path_plot
+            freq_data=freq_data
         )
         new_trading_requirements = backtester_orchestrator.run_backtest()
         # Update
@@ -518,8 +494,9 @@ class OrdersManagement:
                 files_dct = {
                     s:updated_df
                 }
-                creds = s3Utils.get_credentials(return_bool=True)
-                s3 = s3Utils.connect_aws_s3(creds=creds)
+                # creds = s3Utils.get_credentials(return_bool=True)
+                # s3 = s3Utils.connect_aws_s3(creds=creds)
+                s3 = boto3.client("s3")
                 s3Utils.replace_existing_files_in_s3(s3=s3,
                                                      bucket_name=bucket_name,
                                                      files_dct=files_dct
@@ -536,12 +513,417 @@ class OrdersManagement:
         if orders_dct is None:
             pass
         else:
-            creds = s3Utils.get_credentials(return_bool=True)
-            s3 = s3Utils.connect_aws_s3(creds=creds)
+            # creds = s3Utils.get_credentials(return_bool=True)
+            # s3 = s3Utils.connect_aws_s3(creds=creds)
+            s3 = boto3.client("s3")
             s3Utils.replace_existing_files_in_s3(s3=s3,
                                                  bucket_name=bucket_name,
                                                  files_dct=orders_dct
                                                  )
+
+        return
+
+    @staticmethod
+    def execute_orders_for_today(
+            orders_s3_path: str,
+            ib_prices_s3: str,
+            host: str,
+            port: int,
+            client_id: int,
+            order_type:str="MKT",
+            tif:str="DAY",
+            outside_rth:bool=True,
+            place_orders_first_time:bool=False
+    ) -> None:
+        """
+        Entry point for live / paper execution.
+        Executes orders ONLY if today is a rebalancing date.
+        """
+
+        # --------------------------------------------------
+        # Step 1.1 — Load orders from S3
+        # --------------------------------------------------
+        orders = s3Utils.pull_parquet_file_from_s3(
+            path=orders_s3_path
+        )
+
+        # Defensive parsing
+        orders = orders.copy()
+        orders["date"] = pd.to_datetime(orders["date"])
+        orders = orders.sort_values("date")
+
+        # --------------------------------------------------
+        # Step 1.2 — Determine todzy & last order date
+        # --------------------------------------------------
+        today = pd.Timestamp(date.today()).normalize()
+        last_order_date = orders.iloc[-1,:]["date"].normalize()
+
+        logger.info(f"Today: {today}")
+        print(f"Today: {today}")
+        logger.info(f"Last order date in orders file: {last_order_date}")
+        print(f"Last order date in orders file: {last_order_date}")
+
+        # --------------------------------------------------
+        # Step 1.3 — Execution eligibility check
+        # --------------------------------------------------
+        if pd.isna(today):
+            logger.info("No execution today: date is NaT.")
+            print("No execution today: date is NaT.")
+            return
+
+        if today != last_order_date:
+            if place_orders_first_time:
+                logger.info("Placing orders for the first time: proceeding to execution steps.")
+                print("Placing orders for the first time: proceeding to execution steps.")
+            else:
+                logger.info("No execution today: not a rebalancing date.")
+                print("No execution today: not a rebalancing date.")
+                return
+
+        logger.info("Execution day detected. Proceeding to execution steps.")
+        print("Execution day detected. Proceeding to execution steps.")
+
+        # --------------------------------------------------
+        # Step 3 — Extract today's orders
+        # --------------------------------------------------
+        logger.info(f"Execution date detected: {today.date()}")
+        print(f"Execution date detected: {today.date()}")
+
+        # Filter today's orders
+        if place_orders_first_time:
+            orders_today = orders.loc[orders["date"] == orders["date"].max()].copy()
+        else:
+            orders_today = orders.loc[orders["date"] == today].copy()
+
+        if orders_today.empty:
+            logger.info("No orders to execute for today.")
+            print("No orders to execute for today.")
+            return
+
+        logger.info(f"{len(orders_today)} orders found for execution today")
+        print(f"{len(orders_today)} orders found for execution today")
+
+        # --------------------------------------------------
+        # Step 4A — Execute SELL orders
+        # --------------------------------------------------
+        logger.info("Step 4A — Executing SELL orders first")
+        print("Step 4A — Executing SELL orders first")
+
+        # Defensive copy
+        orders_today = orders_today.copy()
+
+        # Sanity checks
+        required_cols = {"ib_ticker", "order_type", "quantity", "currency","exchange_ib"}
+        missing_cols = required_cols - set(orders_today.columns)
+        if missing_cols:
+            raise ValueError(f"Missing required columns in orders: {missing_cols}")
+
+        # Pull prices from s3 to estimate notional amount
+        # Merge estimated prices from S3 (for ordering priority of orders)
+        # prices_s3 must already be pulled
+        prices_s3 = s3Utils.pull_parquet_file_from_s3(
+            path=ib_prices_s3
+        )
+        prices_col = prices_s3.reset_index()
+        prices_s3_long = pd.melt(prices_col,
+                                 id_vars=["date"],
+                                 value_vars=[col for col in prices_col.columns if col != "date"],
+                                 var_name="ib_ticker",
+                                 value_name="price")
+
+        # Connect to IB
+        # Instantiate IB class
+        ib_utils = IbUtils(
+            host=host,
+            port=port,
+            client_id=client_id
+        )
+        # Connect to IB
+        ib_utils.connect_ib()
+
+        # Identify SELL orders
+        orders_today = orders_today[orders_today["order_type"].notna()]
+        # because .str.upper() on nan will fail
+
+        sell_orders = orders_today.loc[
+            orders_today["order_type"].str.upper() == "SELL"
+            ].copy()
+
+        if sell_orders.empty:
+            logger.info("No SELL orders to execute today.")
+            print("No SELL orders to execute today.")
+        else:
+            # Drop invalid rows
+            invalid_sell_mask = sell_orders["ib_ticker"].isna() | sell_orders["order_type"].isna() | sell_orders["quantity"].isna() \
+                    | sell_orders["currency"].isna() | sell_orders["exchange_ib"].isna()
+
+            if invalid_sell_mask.any():
+                logger.warning(
+                    f"{invalid_sell_mask.sum()} SELL orders have NaN and will be skipped."
+                )
+                print(
+                    f"{invalid_sell_mask.sum()} SELL orders skipped due to NaN."
+                )
+
+            sell_orders = sell_orders.loc[~invalid_sell_mask]
+
+            # Guard in case prices_s3_long contains duplicates (date,ib_ticker) (which should not occur)
+            if prices_s3_long.duplicated(["date", "ib_ticker"]).any():
+                logger.warning("Duplicate prices detected in S3 price data")
+                print("Duplicate prices detected in S3 price data")
+                prices_s3_long = prices_s3_long.drop_duplicates(subset=["date", "ib_ticker"])
+
+            sell_orders = sell_orders.merge(
+                prices_s3_long,
+                left_on=["date", "ib_ticker"],
+                right_on=["date", "ib_ticker"],
+                how="left"
+            )
+
+            invalid_price_mask = sell_orders["price"].isna()
+            if invalid_price_mask.any():
+                logger.warning(
+                    f"{invalid_price_mask.sum()} SELL orders have missing prices and will be skipped."
+                )
+                print(
+                    f"{invalid_price_mask.sum()} SELL orders skipped due to missing prices."
+                )
+
+            sell_orders = sell_orders.loc[~invalid_price_mask]
+
+            # Compute estimated notional
+            sell_orders["est_notional"] = (
+                    sell_orders["quantity"].abs() * sell_orders["price"]
+            )
+
+            # Sort by largest estimated notional first
+            sell_orders = sell_orders.sort_values(
+                by="est_notional", ascending=False
+            )
+
+            # Execute SELL orders (IB is source of truth for cash)
+            sell_orders_traceability = sell_orders.copy()
+            sell_orders_traceability["sent_ts"] = pd.Series(
+                pd.NaT, index=sell_orders_traceability.index, dtype="datetime64[ns]"
+            )
+            sell_orders_traceability["executed"] = False
+            sell_orders_traceability["skip_reason"] = None
+            sell_orders_traceability["raw_quantity"] = sell_orders["quantity"]
+            sell_orders_traceability["exec_quantity"] = sell_orders["quantity"].abs().astype(int)
+
+            for idx, row in sell_orders.iterrows():
+                try:
+                    qty = int(abs(row["quantity"]))
+                    if qty == 0:
+                        logger.warning(
+                            f"SKIP SELL | {row['ib_ticker']} | quantity rounded to 0"
+                        )
+                        sell_orders_traceability.loc[idx, "skip_reason"] = "ZERO_QTY_AFTER_ROUND"
+                        continue
+
+                    logger.info(
+                        f"SEND SELL | {row['ib_ticker']} | qty={qty} | est_notional={row['est_notional']:.2f}"
+                    )
+
+                    print(
+                        f"SEND SELL | {row['ib_ticker']} | qty={qty} | est_notional={row['est_notional']:.2f}"
+                    )
+
+
+                    trade = ib_utils.place_order(
+                        ticker=row["ib_ticker"],
+                        side="SELL",
+                        quantity=qty,
+                        exchange=row["exchange_ib"],
+                        currency=row["currency"],
+                        order_type=order_type,
+                        tif=tif,
+                        outside_rth=outside_rth
+                    )
+                    ib_utils.ib.sleep(1)
+
+                    ACCEPTED_STATUSES = {"PreSubmitted", "Submitted", "Filled"}
+                    if trade.orderStatus.status not in ACCEPTED_STATUSES:
+                        raise Exception(f"Order rejected: {trade.orderStatus}")
+
+                    sell_orders_traceability.loc[idx, "sent_ts"] = pd.Timestamp.now()
+
+                    if trade.orderStatus.status == "Filled":
+                        sell_orders_traceability.loc[idx, "executed"] = True
+                    else:
+                        sell_orders_traceability.loc[idx, "skip_reason"] = trade.orderStatus.status
+
+                except Exception as e:
+                    logger.error(
+                        f"FAILED SELL order | ticker={row['ib_ticker']} | qty={row['quantity']} | error={e}"
+                    )
+                    print(
+                        f"FAILED SELL order | ticker={row['ib_ticker']} | error={e}"
+                    )
+                    sell_orders_traceability.loc[idx, "skip_reason"] = str(e)
+                    continue
+
+            logger.info(f"SELL execution phase completed ({len(sell_orders)} orders sent).")
+            print(f"SELL execution phase completed ({len(sell_orders)} orders sent).")
+
+            logger.info("SELL orders traceability:\n%s", sell_orders_traceability.to_string())
+            print(sell_orders_traceability)
+
+
+        # Step 4B — Execute BUY orders
+        logger.info("Step 4B — Executing BUY orders with live cash constraint")
+        print("Step 4B — Executing BUY orders with live cash constraint")
+
+        # Identify BUY orders
+        buy_orders = orders_today.loc[
+            orders_today["order_type"].str.upper() == "BUY"
+            ].copy()
+
+        if buy_orders.empty:
+            logger.info("No BUY orders to execute today.")
+            print("No BUY orders to execute today.")
+        else:
+            # Drop invalid rows
+            invalid_buy_mask = (
+                    buy_orders["ib_ticker"].isna()
+                    | buy_orders["quantity"].isna()
+                    | buy_orders["currency"].isna()
+                    | buy_orders["exchange_ib"].isna()
+            )
+
+            if invalid_buy_mask.any():
+                logger.warning(
+                    f"{invalid_buy_mask.sum()} BUY orders have NaN and will be skipped."
+                )
+                print(f"{invalid_buy_mask.sum()} BUY orders skipped due to NaN.")
+
+            buy_orders = buy_orders.loc[~invalid_buy_mask]
+
+            # --------------------------------------------------
+            # Merge estimated prices from S3 (priority only)
+            # --------------------------------------------------
+            buy_orders = buy_orders.merge(
+                prices_s3_long,
+                on=["date", "ib_ticker"],
+                how="left"
+            )
+
+            missing_price_mask = buy_orders["price"].isna()
+            if missing_price_mask.any():
+                logger.warning(
+                    f"{missing_price_mask.sum()} BUY orders missing prices and will be skipped."
+                )
+                print(
+                    f"{missing_price_mask.sum()} BUY orders skipped due to missing prices."
+                )
+
+            buy_orders = buy_orders.loc[~missing_price_mask]
+
+            # Estimated notional for priority
+            buy_orders["est_notional"] = (
+                    buy_orders["quantity"].abs() * buy_orders["price"]
+            )
+
+            # Sort by largest notional first
+            buy_orders = buy_orders.sort_values(
+                by="est_notional", ascending=False
+            )
+
+            # Live cash from ib
+            try:
+                estimated_cash = ib_utils.get_available_funds()
+            except StopIteration:
+                raise Exception("AvailableFunds not found in IB account values")
+
+            logger.info(f"Initial IB available funds: {estimated_cash:.2f}")
+
+            # Execute BUYs greedily
+            buy_orders_traceability = buy_orders.copy()
+            buy_orders_traceability["sent_ts"] = pd.Series(
+                pd.NaT, index=buy_orders_traceability.index, dtype="datetime64[ns]"
+            )
+            buy_orders_traceability["executed"] = False
+            buy_orders_traceability["skip_reason"] = None
+            buy_orders_traceability["raw_quantity"] = sell_orders["quantity"]
+            buy_orders_traceability["exec_quantity"] = sell_orders["quantity"].abs().astype(int)
+
+            for idx, row in buy_orders.iterrows():
+                qty = int(abs(row["quantity"]))
+                price = row["price"]
+
+                if qty == 0:
+                    logger.warning(
+                        f"SKIP BUY | {row['ib_ticker']} | quantity rounded to 0"
+                    )
+                    buy_orders_traceability.loc[idx, "skip_reason"] = "ZERO_QTY_AFTER_ROUND"
+                    continue
+
+                est_notional = row["est_notional"]
+
+                # Numerical tolerance to avoid float precision issues
+                if est_notional > estimated_cash * (1 - 1e-6):
+                    logger.warning(
+                        f"SKIP BUY | {row['ib_ticker']} | est_notional={est_notional:.2f} > cash={estimated_cash:.2f}"
+                    )
+                    print(
+                        f"SKIP BUY | {row['ib_ticker']} | insufficient cash"
+                    )
+                    buy_orders_traceability.loc[idx, "skip_reason"] = "INSUFFICIENT_CASH"
+                    continue
+
+                try:
+                    logger.info(
+                        f"SEND BUY | {row['ib_ticker']} | qty={qty} | est_notional={est_notional:.2f}"
+                    )
+                    print(
+                        f"SEND BUY | {row['ib_ticker']} | qty={qty} | est_notional={est_notional:.2f}"
+                    )
+
+                    trade = ib_utils.place_order(
+                        ticker=row["ib_ticker"],
+                        side="BUY",
+                        quantity=qty,
+                        exchange=row["exchange_ib"],
+                        currency=row["currency"],
+                        order_type=order_type,
+                        tif=tif,
+                        outside_rth=outside_rth
+                    )
+                    ib_utils.ib.sleep(1)
+
+                    ACCEPTED_STATUSES = {"PreSubmitted", "Submitted", "Filled"}
+                    if trade.orderStatus.status not in ACCEPTED_STATUSES:
+                        raise Exception(f"Order rejected: {trade.orderStatus}")
+
+                    buy_orders_traceability.loc[idx, "sent_ts"] = pd.Timestamp.now()
+                    buy_orders_traceability.loc[idx, "executed"] = True
+
+                    # Update cash available
+                    estimated_cash -= est_notional
+
+                    logger.info(f"Remaining cash (post BUY): {estimated_cash:.2f}")
+                    print(f"Remaining cash: {estimated_cash:.2f}")
+
+                except Exception as e:
+                    logger.error(
+                        f"FAILED BUY | {row['ib_ticker']} | qty={qty} | error={e}"
+                    )
+                    print(
+                        f"FAILED BUY | {row['ib_ticker']} | error={e}"
+                    )
+                    buy_orders_traceability.loc[idx, "skip_reason"] = str(e)
+                    continue
+
+            logger.info("BUY execution phase completed.")
+            print("BUY execution phase completed.")
+
+            logger.info("BUY orders traceability:\n%s", buy_orders_traceability.to_string())
+            print(buy_orders_traceability)
+
+        logger.info("SELL and BUY completed.")
+        print("BUY SELL and BUY completed.")
+
+        ib_utils.log_out_ib()
 
         return
 

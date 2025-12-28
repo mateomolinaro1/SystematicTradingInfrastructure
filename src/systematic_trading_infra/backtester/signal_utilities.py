@@ -1,9 +1,4 @@
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from typing import Union, Tuple
-from sklearn.linear_model import LinearRegression
-from src.systematic_trading_infra.backtester import utilities
 
 class Momentum:
 

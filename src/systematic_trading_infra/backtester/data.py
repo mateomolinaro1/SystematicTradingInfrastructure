@@ -65,52 +65,68 @@ class AmazonS3(DataSource):
         self.s3_object_name = s3_object_name
         self.aws_credentials = None
 
-    def get_credentials(self,
-                        return_bool:bool=False
-                        )->Dict[str, str]:
+    # def get_credentials(self,
+    #                     return_bool:bool=False
+    #                     )->Dict[str, str]:
+    #     """
+    #     Load credentials from .env .
+    #     :param:
+    #     - return_bool: If True, returns the credentials dict.
+    #     :return: a dict containing the credentials.
+    #     """
+    #     creds = {}
+    #     for key in ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]:
+    #         val = os.getenv(key)
+    #         if val is not None:
+    #             creds[key] = val
+    #
+    #     required = ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]
+    #     missing = [k for k in required if k not in creds]
+    #
+    #     if missing:
+    #         logger.error(f"Missing credentials: {missing}")
+    #         raise RuntimeError(f"Missing credentials: {missing}")
+    #
+    #     if self.aws_credentials is None:
+    #         self.aws_credentials = creds
+    #
+    #     if return_bool:
+    #         return creds
+
+    # def connect_aws_s3(self)->None:
+    #     """
+    #     Connect to AWS S3 using the loaded credentials.
+    #     :return: boto3 S3 client.
+    #     """
+    #     if self.aws_credentials is None:
+    #         try:
+    #             self.get_credentials()
+    #         except Exception as e:
+    #             logger.error(f"Error loading AWS credentials: {e}")
+    #             raise ValueError("AWS credentials not loaded. Please provide the credentials file.")
+    #
+    #     self.s3 = boto3.client(
+    #         's3',
+    #         aws_access_key_id=self.aws_credentials["KEY"],
+    #         aws_secret_access_key=self.aws_credentials["SECRET_KEY"],
+    #         region_name=self.aws_credentials["REGION"]
+    #     )
+
+    def connect_aws_s3(self) -> None:
         """
-        Load credentials from .env .
-        :param:
-        - return_bool: If True, returns the credentials dict.
-        :return: a dict containing the credentials.
+        Connect to AWS S3 using environment-based credentials.
+        Credentials are automatically resolved by boto3 from:
+        - AWS_ACCESS_KEY_ID
+        - AWS_SECRET_ACCESS_KEY
+        - AWS_SESSION_TOKEN (optional)
+        - AWS_DEFAULT_REGION
         """
-        creds = {}
-        for key in ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]:
-            val = os.getenv(key)
-            if val is not None:
-                creds[key] = val
-
-        required = ["KEY", "SECRET_KEY","REGION","OUTPUT_FORMAT"]
-        missing = [k for k in required if k not in creds]
-
-        if missing:
-            logger.error(f"Missing credentials: {missing}")
-            raise RuntimeError(f"Missing credentials: {missing}")
-
-        if self.aws_credentials is None:
-            self.aws_credentials = creds
-
-        if return_bool:
-            return creds
-
-    def connect_aws_s3(self)->None:
-        """
-        Connect to AWS S3 using the loaded credentials.
-        :return: boto3 S3 client.
-        """
-        if self.aws_credentials is None:
-            try:
-                self.get_credentials()
-            except Exception as e:
-                logger.error(f"Error loading AWS credentials: {e}")
-                raise ValueError("AWS credentials not loaded. Please provide the credentials file.")
-
-        self.s3 = boto3.client(
-            's3',
-            aws_access_key_id=self.aws_credentials["KEY"],
-            aws_secret_access_key=self.aws_credentials["SECRET_KEY"],
-            region_name=self.aws_credentials["REGION"]
-        )
+        try:
+            self.s3 = boto3.client("s3")
+            logger.info("Successfully connected to AWS S3.")
+        except Exception as e:
+            logger.error(f"Failed to connect to AWS S3: {e}")
+            raise RuntimeError("Could not connect to AWS S3. Check AWS credentials and region.")
 
     def fetch_data(self):
         """

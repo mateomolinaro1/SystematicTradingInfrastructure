@@ -1,9 +1,9 @@
 from configs.config_run_backtest import *
-from src.systematic_trading_infra.backtester.data import DataManager
+from systematic_trading_infra.backtester.data import DataManager
 from dotenv import load_dotenv
 load_dotenv()
-from src.systematic_trading_infra.backtester.data import AmazonS3
-from src.systematic_trading_infra.backtester import strategies, signal_utilities, portfolio, backtest, analysis, visualization
+from systematic_trading_infra.backtester.data import AmazonS3
+from systematic_trading_infra.backtester import strategies, signal_utilities, portfolio, backtest, analysis, visualization
 import sys
 import logging
 

@@ -1,20 +1,57 @@
-from ib_insync import IB, Stock, MarketOrder
+from systematic_trading_infra.trading.orders_management import OrdersManagement
+from systematic_trading_infra.utils.alerts import PushoverAlters
+from dotenv import load_dotenv
+import os
+import logging
+import sys
+load_dotenv()
 
-ib = IB()
-ib.connect('127.0.0.1', 4002, clientId=1)
 
-contract = Stock('AAPL', 'SMART', 'USD')
-ib.qualifyContracts(contract)
+def main(
+        orders_s3_path: str,
+        ib_prices_s3: str,
+        order_type: str,
+        tif: str,
+        outside_rth: bool,
+        place_orders_first_time: bool,
+):
+    logging.basicConfig(
+        level=logging.INFO,
+        stream=sys.stdout,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Starting order execution process.")
 
-order = MarketOrder('SELL', 1)
+    PushoverAlters.send_pushover(
+        pushover_user=os.getenv("PUSHOVER_USER_KEY"),
+        pushover_token=os.getenv("PUSHOVER_APP_TOKEN"),
+        message="Starting order execution process.",
+        title="Systematic Trading Infra",
+    )
 
-trade = ib.placeOrder(contract, order)
+    OrdersManagement.execute_orders_for_today(
+        orders_s3_path=orders_s3_path,
+        ib_prices_s3=ib_prices_s3,
+        host=os.getenv("IB_HOST"),
+        port=int(os.getenv("IB_PORT")),
+        client_id=int(os.getenv("IB_CLIENT_ID")),
+        order_type=order_type,
+        tif=tif,
+        outside_rth=outside_rth,
+        place_orders_first_time=place_orders_first_time
+    )
 
-trade.filledEvent += lambda trade: print("Order filled")
-trade.cancelledEvent += lambda trade: print("Order cancelled")
+    logger.info("Order execution process completed.")
+    PushoverAlters.send_pushover(
+        pushover_user=os.getenv("PUSHOVER_USER_KEY"),
+        pushover_token=os.getenv("PUSHOVER_APP_TOKEN"),
+        message="Ending order execution process.",
+        title="Systematic Trading Infra",
+    )
 
-ib.cancelOrder(trade.order)
+if __name__ == "__main__":
+    from configs.config_execute_orders import CONFIG
+    main(**CONFIG)
 
-open_trades = ib.reqOpenOrders()
-for trade in open_trades:
-    print(trade.contract.symbol, trade.order.action, trade.order.totalQuantity, trade.orderStatus.status)
+

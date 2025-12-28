@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import time
+from pandas.tseries.offsets import BDay
 from typing import List, Union, Tuple, Dict, Optional
 import logging
 import wrds
@@ -14,8 +15,8 @@ import boto3
 from botocore.client import BaseClient
 from pathlib import Path
 import io
-from src.systematic_trading_infra.utils.alerts import PushoverAlters
-from src.systematic_trading_infra.utils.s3_utils import s3Utils
+from systematic_trading_infra.utils.alerts import PushoverAlters
+from systematic_trading_infra.utils.s3_utils import s3Utils
 
 logger = logging.getLogger(__name__)
 
@@ -1000,24 +1001,40 @@ class DataHandler:
         if return_bool:
             return creds
 
-    def connect_aws_s3(self)->None:
+    # def connect_aws_s3(self)->None:
+    #     """
+    #     Connect to AWS S3 using the loaded credentials.
+    #     :return: boto3 S3 client.
+    #     """
+    #     if self.aws_credentials is None:
+    #         try:
+    #             self.get_credentials()
+    #         except Exception as e:
+    #             logger.error(f"Error loading AWS credentials: {e}")
+    #             raise ValueError("AWS credentials not loaded. Please provide the credentials file.")
+    #
+    #     self.s3 = boto3.client(
+    #         's3',
+    #         aws_access_key_id=self.aws_credentials["KEY"],
+    #         aws_secret_access_key=self.aws_credentials["SECRET_KEY"],
+    #         region_name=self.aws_credentials["REGION"]
+    #     )
+    def connect_aws_s3(self) -> None:
         """
-        Connect to AWS S3 using the loaded credentials.
-        :return: boto3 S3 client.
+        Connect to AWS S3 using environment-based credentials.
+        Credentials are automatically resolved by boto3 from:
+        - AWS_ACCESS_KEY_ID
+        - AWS_SECRET_ACCESS_KEY
+        - AWS_SESSION_TOKEN (optional)
+        - AWS_DEFAULT_REGION
         """
-        if self.aws_credentials is None:
-            try:
-                self.get_credentials()
-            except Exception as e:
-                logger.error(f"Error loading AWS credentials: {e}")
-                raise ValueError("AWS credentials not loaded. Please provide the credentials file.")
+        try:
+            self.s3 = boto3.client("s3")
+            logger.info("Successfully connected to AWS S3.")
+        except Exception as e:
+            logger.error(f"Failed to connect to AWS S3: {e}")
+            raise RuntimeError("Could not connect to AWS S3. Check AWS credentials and region.")
 
-        self.s3 = boto3.client(
-            's3',
-            aws_access_key_id=self.aws_credentials["KEY"],
-            aws_secret_access_key=self.aws_credentials["SECRET_KEY"],
-            region_name=self.aws_credentials["REGION"]
-        )
 
     def upload_file_to_s3(self,
                           file_paths_and_s3_object_names:dict,
@@ -1251,7 +1268,12 @@ class DataHandler:
         current_ib_tickers = self.s3_files_downloaded['ib_tickers']
         last_date_in_current = current_ib_historical_prices.index.max()
         current_date = pd.to_datetime('today').normalize()
-        delta_days = (current_date - last_date_in_current).days
+
+        # Last US business day
+        last_trading_day = current_date - BDay(1) if current_date.weekday() >= 5 else current_date
+
+        delta_days = (last_trading_day - last_date_in_current).days
+
         if delta_days <= 0:
             logger.info("IB historical prices data is already up to date.")
             return

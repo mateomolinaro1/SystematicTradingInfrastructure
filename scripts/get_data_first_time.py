@@ -1,6 +1,6 @@
 from configs.config_get_data_first_time  import *
-from src.systematic_trading_infra.data.data_handler import DataHandler
-from src.systematic_trading_infra.utils.files_utils import FileUtils
+from systematic_trading_infra.data.data_handler import DataHandler
+from systematic_trading_infra.utils.files_utils import FileUtils
 from dotenv import load_dotenv
 load_dotenv()
 import os

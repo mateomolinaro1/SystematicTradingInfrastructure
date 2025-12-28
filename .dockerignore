@@ -39,4 +39,6 @@ aws_credentials.txt
 
 # Secrets
 #.env
+
+
 #!outputs/logger.log

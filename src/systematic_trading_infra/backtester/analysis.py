@@ -3,8 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Union
 
-from matplotlib.pyplot import savefig
-
 
 class PerformanceAnalyser:
     """Class to analyse the performance of a strategy"""

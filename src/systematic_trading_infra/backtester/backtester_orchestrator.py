@@ -1,6 +1,6 @@
 import pandas as pd
-from src.systematic_trading_infra.backtester.data import AmazonS3, DataManager
-from src.systematic_trading_infra.backtester import strategies, signal_utilities, portfolio, backtest, analysis
+from systematic_trading_infra.backtester.data import AmazonS3, DataManager
+from systematic_trading_infra.backtester import strategies, signal_utilities, portfolio, backtest, analysis
 from typing import Tuple
 import logging
 
@@ -30,8 +30,7 @@ class BacktesterOrchestrator:
                  transaction_costs_bench:int|float=10,
                  strategy_name_bench:str="Bench Buy-and-Hold EW",
                  performance_analysis:bool=False,
-                 freq_data:str|None=None,
-                 saving_path_plot:str|None=None
+                 freq_data:str|None=None
                  ):
         # --- Data / IO ---
         self.bucket_name = bucket_name
@@ -71,15 +70,14 @@ class BacktesterOrchestrator:
         # --- Analysis and plotting ---
         self.performance_analysis = performance_analysis
         self.freq_data = freq_data
-        self.saving_path_plot = saving_path_plot
 
         # Check
         if self.performance_analysis:
-            if self.freq_data is None or self.saving_path_plot is None:
+            if self.freq_data is None:
                 logger.error(
-                    "If performance analysis is not None, both freq_data and saving_path_plot must be provided.")
+                    "If performance analysis is not None, freq_data must be provided.")
                 raise ValueError(
-                    "If performance analysis is not None, both freq_data and saving_path_plot must be provided.")
+                    "If performance analysis is not None, freq_data must be provided.")
 
     def run_backtest(self)->dict:
         ds = AmazonS3(
@@ -174,17 +172,15 @@ class BacktesterOrchestrator:
             )
             analyzer.compute_metrics()
 
-            analyzer.plot_cumulative_performance(saving_path=self.saving_path_plot,
-                                                 show=False,
-                                                 blocking=False)
-
+        bench_net_returns = backtester_bench.portfolio_net_returns.loc[backtester.start_date:, :]
         dct = {"signals_values":strategy.signals_values,
                "signals":strategy.signals,
                "bench_signals_values":bench.signals_values,
                "bench_signals":bench.signals,
                "weights":ptf.rebalanced_weights,
                "bench_weights":ptf_bench.rebalanced_weights,
-               "strategy_net_returns":backtester.portfolio_net_returns,
+               "strategy_net_returns":backtester.cropped_portfolio_net_returns,
+               "bench_net_returns":bench_net_returns,
                "strategy_start_date":backtester.start_date,
                "prices_cleaned_from_dm":dm.cleaned_data
                }

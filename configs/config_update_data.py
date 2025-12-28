@@ -48,3 +48,11 @@ DATE_COLS = [
 SAVING_CONFIG_UNIVERSE = {}
 RETURN_BOOL_UNIVERSE = False
 
+CONFIG = {
+    "data_path": DATA_PATH,
+    "bucket_name": BUCKET_NAME,
+    "wrds_request": WRDS_REQUEST,
+    "date_cols": DATE_COLS,
+    "saving_config": SAVING_CONFIG_UNIVERSE,
+    "return_bool": RETURN_BOOL_UNIVERSE,
+}
