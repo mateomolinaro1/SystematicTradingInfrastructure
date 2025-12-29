@@ -38,7 +38,7 @@ wrds_requests.txt
 aws_credentials.txt
 
 # Secrets
-#.env
+.env
 
 
 #!outputs/logger.log
