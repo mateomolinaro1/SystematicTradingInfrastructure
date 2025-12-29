@@ -171,15 +171,15 @@ if st.session_state["results"] is not None:
     # Strategy row
     cols = st.columns(5)
     cols[0].markdown("**Strategy**")
-    cols[1].metric("", f"{metrics_strat['Ann. Return']:.2%}")
-    cols[2].metric("", f"{metrics_strat['Ann. Vol']:.2%}")
-    cols[3].metric("", f"{metrics_strat['Sharpe']:.2f}")
-    cols[4].metric("", f"{metrics_strat['Max Drawdown']:.2%}")
+    cols[1].metric(label="annret", value=f"{metrics_strat['Ann. Return']:.2%}", label_visibility="hidden")
+    cols[2].metric(label="annvol",label_visibility="hidden",value=f"{metrics_strat['Ann. Vol']:.2%}")
+    cols[3].metric(label="sr",label_visibility="hidden",value=f"{metrics_strat['Sharpe']:.2f}")
+    cols[4].metric(label="mdd",label_visibility="hidden",value=f"{metrics_strat['Max Drawdown']:.2%}")
 
     # Benchmark row
     cols = st.columns(5)
     cols[0].markdown("**Benchmark**")
-    cols[1].metric("", f"{metrics_bench['Ann. Return']:.2%}")
-    cols[2].metric("", f"{metrics_bench['Ann. Vol']:.2%}")
-    cols[3].metric("", f"{metrics_bench['Sharpe']:.2f}")
-    cols[4].metric("", f"{metrics_bench['Max Drawdown']:.2%}")
+    cols[1].metric(label="annret",label_visibility="hidden",value=f"{metrics_bench['Ann. Return']:.2%}")
+    cols[2].metric(label="annvol",label_visibility="hidden",value=f"{metrics_bench['Ann. Vol']:.2%}")
+    cols[3].metric(label="sr",label_visibility="hidden",value=f"{metrics_bench['Sharpe']:.2f}")
+    cols[4].metric(label="mdd",label_visibility="hidden",value=f"{metrics_bench['Max Drawdown']:.2%}")
