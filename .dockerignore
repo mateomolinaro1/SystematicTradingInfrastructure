@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.idea
+.pytest_cache
+
 
 # Git
 .gitignore
