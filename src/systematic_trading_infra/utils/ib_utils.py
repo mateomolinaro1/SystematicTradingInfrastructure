@@ -117,7 +117,10 @@ class IbUtils:
                 trade.contract.symbol,
                 trade.order.action,
                 trade.order.totalQuantity,
-                trade.orderStatus.status
+                trade.orderStatus.status,
+                trade.orderStatus.filled,
+                trade.orderStatus.remaining,
+                trade.orderStatus.avgFillPrice
             )
 
     def cancel_presubmitted_orders(self)->None:
@@ -130,4 +133,7 @@ class IbUtils:
                     f"Cancel sent | {trade.contract.symbol} | "
                     f"{trade.order.action} | status={trade.orderStatus.status}"
                 )
+
+
+
 
