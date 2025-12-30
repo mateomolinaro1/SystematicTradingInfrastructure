@@ -234,7 +234,7 @@ All commands below must be executed in a **terminal**:
 
 ---
 
-### 1️⃣ Choose a working directory
+### 1️⃣ In the CMD, run the following commands
 
 In the terminal, move to a directory where you want to store the project. Replace `[your_path]` with your desired path.
 For example, for me it was C:\Users\mateo\Code\ENSAE\InfraSyst\Project\test1.
@@ -272,6 +272,16 @@ docker run --rm -p 8503:8501 --env-file .env mateomolinaro1/systematic-trading-i
 You can now go to `http://localhost:8501` in your web browser to access the live strategy monitoring dashboard.
 You can now go to `http://localhost:8502` in your web browser to access the strategy backtesting dashboard.
 You can now go to `http://localhost:8503` in your web browser to access the mock trading monitoring dashboard.
+
+---
+
+### 3️⃣ Clone and pull the repository (optional)
+```bash
+git clone https://github.com/mateomolinaro1/SystematicTradingInfrastructure.git
+git pull origin master
+
+```
+---
 
 Enjoy!
 
