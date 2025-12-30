@@ -237,7 +237,8 @@ All commands below must be executed in a **terminal**:
 ### 1️⃣ Choose a working directory
 
 In the terminal, move to a directory where you want to store the project. Replace `[your_path]` with your desired path.
-For example, for me it was C:\Users\mateo\Code\ENSAE\InfraSyst\Project\test1
+For example, for me it was C:\Users\mateo\Code\ENSAE\InfraSyst\Project\test1.
+Replace `[your_aws_access_key_id]` by `AKIARKTAP6ZBYKHU775A` and `[your_aws_secret_access_key]` by `FGoj/A7SWg8oF5ZMC/q8m2Xu7Ogj0WDc8DNcIXBF`.
 
 ```bash
 
@@ -257,8 +258,8 @@ echo IB_HOST=host.docker.internal
 echo IB_PORT=your_ib_port
 echo IB_CLIENT_ID=1
 echo.
-echo AWS_ACCESS_KEY_ID=AKIARKTAP6ZBYKHU775A
-echo AWS_SECRET_ACCESS_KEY=FGoj/A7SWg8oF5ZMC/q8m2Xu7Ogj0WDc8DNcIXBF
+echo AWS_ACCESS_KEY_ID=[your_aws_access_key_id]
+echo AWS_SECRET_ACCESS_KEY=[your_aws_secret_access_key]
 echo AWS_DEFAULT_REGION=eu-north-1
 echo OUTPUT_FORMAT=json
 echo.
