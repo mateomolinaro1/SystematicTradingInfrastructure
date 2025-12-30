@@ -242,10 +242,6 @@ Replace `[your_aws_access_key_id]` by `AKIARKTAP6ZBYKHU775A` and `[your_aws_secr
 
 ```bash
 
-Example:
-
-```bash
-
 cd [your_path]
 
 docker pull mateomolinaro1/systematic-trading-infra:ALL.v2
