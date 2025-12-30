@@ -193,6 +193,61 @@ Feedback, questions, and suggestions are welcome.
 
 ---
 
+## Quick start (recommended)
+
+This section explains how to quickly run the project using Docker.
+
+The easiest way to get started is to:
+- clone the GitHub repository (to access configs, scripts, and dashboards),
+- pull the prebuilt Docker image,
+- launch the application locally.
+
+---
+
+## Running the dashboards (step by step for beginners)
+
+This section explains **exactly where and how** to run each command.
+
+All commands below must be executed in a **terminal**:
+
+- **Windows**: Command Prompt (CMD)  
+- **macOS / Linux**: Terminal
+
+---
+
+### 0️⃣ Open a terminal
+
+- On **Windows**:
+  - Press `Win + R`, type `cmd`, press Enter
+
+- On **macOS**:
+  - Open **Terminal** from Applications
+
+- On **Linux**:
+  - Open your system terminal
+
+---
+
+### 1️⃣ Choose a working directory
+
+In the terminal, move to a directory where you want to store the project.
+
+Example:
+
+```bash
+cd Desktop
+git clone https://github.com/mateomolinaro1/SystematicTradingInfrastructure.git
+cd SystematicTradingInfrastructure
+docker pull mateomolinaro1/systematic-trading-infra:ALL.v2
+cp .env.example .env
+
+
+docker run --rm -p 8501:8501 --env-file .env mateomolinaro1/systematic-trading-infra:ALL.v2 -m streamlit run src/systematic_trading_infra/dashboards/paper_trading_monitoring/app.py --server.address=0.0.0.0 --server.port=8501
+[//]: # open in your browser: (http://localhost:8501)
+docker run --rm -p 8502:8501 --env-file .env mateomolinaro1/systematic-trading-infra:ALL.v2 -m streamlit run src/systematic_trading_infra/dashboards/backtesting/app.py --server.address=0.0.0.0 --server.port=8501
+[//]: # open in your browser: (http://localhost:8502)
+docker run --rm -p 8503:8501 --env-file .env mateomolinaro1/systematic-trading-infra:ALL.v2 -m streamlit run src/systematic_trading_infra/dashboards/mock_trading_monitoring/app.py --server.address=0.0.0.0 --server.port=8501
+[//]: # open in your browser: (http://localhost:8503)
 ## Disclaimer
 
 This project is for **educational and research purposes only**.  
