@@ -275,7 +275,7 @@ You can now go to `http://localhost:8503` in your web browser to access the mock
 
 ---
 
-### 3️⃣ Clone and pull the repository (optional)
+### 2️⃣ Clone and pull the repository (optional)
 ```bash
 git clone https://github.com/mateomolinaro1/SystematicTradingInfrastructure.git
 git pull origin master
