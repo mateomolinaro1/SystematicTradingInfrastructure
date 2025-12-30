@@ -70,24 +70,24 @@ A **Streamlit dashboard** dedicated to:
 ### 3️⃣ Live strategy monitoring dashboard
 
 A **real-time monitoring dashboard** for:
-- tracking the live strategy,
+- tracking my live strategy,
 - inspecting current positions,
 - monitoring orders and executions.
 
-⚠️ Requires a fully configured trading setup (IB + WRDS).
+✅ **Recommended for most users**  
+❌ Does NOT require IB, WRDS, or Pushover.
 
 ---
 
 ### 4️⃣ Mock trading monitoring dashboard
 
 A **real-time dashboard** that monitors:
-- paper trading,
+- mock trading,
 - simulated executions,
-- strategy behavior under live market conditions.
+- visualization of orders, positions and portfolio value.
 
-✅ **Recommended for users without a funded IB account**  
-❌ Does NOT require WRDS  
-❌ Does NOT require live market data subscriptions
+✅ **Recommended for most users**  
+❌ Does NOT require IB, WRDS, or Pushover.
 
 ---
 
@@ -96,13 +96,14 @@ A **real-time dashboard** that monitors:
 For most users, it is **strongly recommended** to use only:
 
 - **2️⃣ Strategy backtesting dashboard**
+- **3️⃣Live strategy monitoring dashboard** (you will see MY live strategy data)
 - **4️⃣ Mock trading monitoring dashboard**
 
 These services allow you to explore and understand the framework **without any external trading accounts**.
 
 ---
 
-## Requirements for advanced usage (services 1️⃣ and 3️⃣)
+## Requirements for advanced usage (services 1️⃣)
 
 To use the **full systematic trading pipeline**, the following are required:
 
@@ -132,7 +133,7 @@ The main orchestration logic lives in the `scripts/` directory.
 - Pushes all retrieved data to AWS S3.
 
 ⚠️ **Must be run only once**  
-⚠️ **Do NOT run this script if you only want to use services 2️⃣ and 4️⃣**
+⚠️ **Do NOT run this script if you only want to use services 2️⃣,3️⃣ and 4️⃣**
 
 ---
 
@@ -145,6 +146,8 @@ The main orchestration logic lives in the `scripts/` directory.
   - initial trading requirements to be executed by IB.
 
 ⚠️ Run only after `get_data_first_time.py`
+
+⚠️ **Do NOT run this script if you only want to use services 2️⃣,3️⃣ and 4️⃣**
 
 ---
 
@@ -171,6 +174,8 @@ It performs the following steps:
 
 Orders are **pre-submitted** and automatically **executed at 15:30 (market open)**.
 
+⚠️ **Do NOT run this script if you only want to use services 2️⃣,3️⃣ and 4️⃣**
+
 ---
 
 ## Security & credentials
@@ -178,6 +183,7 @@ Orders are **pre-submitted** and automatically **executed at 15:30 (market open)
 - No credentials are stored in the Docker image.
 - All secrets (IB, WRDS, AWS, Pushover) must be provided via environment variables.
 - A `.env.example` file is provided for guidance.
+- You can use the default AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY provided in the `.env.example` for read-only access to my S3 (systematic-trading-infra-storage). 
 
 ---
 
@@ -198,7 +204,7 @@ Feedback, questions, and suggestions are welcome.
 This section explains how to quickly run the project using Docker.
 
 The easiest way to get started is to:
-- clone the GitHub repository (to access configs, scripts, and dashboards),
+- [optionally] clone the GitHub repository (to access configs, scripts, and dashboards),
 - pull the prebuilt Docker image,
 - launch the application locally.
 
@@ -230,25 +236,46 @@ All commands below must be executed in a **terminal**:
 
 ### 1️⃣ Choose a working directory
 
-In the terminal, move to a directory where you want to store the project.
+In the terminal, move to a directory where you want to store the project. Replace `[your_path]` with your desired path.
+For example, for me it was C:\Users\mateo\Code\ENSAE\InfraSyst\Project\test1
+
+```bash
 
 Example:
 
 ```bash
-cd Desktop
-git clone https://github.com/mateomolinaro1/SystematicTradingInfrastructure.git
-cd SystematicTradingInfrastructure
-docker pull mateomolinaro1/systematic-trading-infra:ALL.v2
-cp .env.example .env
 
+cd [your_path]
+
+docker pull mateomolinaro1/systematic-trading-infra:ALL.v2
+
+(
+echo WRDS_USERNAME=your_wrds_username
+echo WRDS_PASSWORD=your_wrds_password
+echo.
+echo IB_HOST=host.docker.internal
+echo IB_PORT=your_ib_port
+echo IB_CLIENT_ID=1
+echo.
+echo AWS_ACCESS_KEY_ID=AKIARKTAP6ZBYKHU775A
+echo AWS_SECRET_ACCESS_KEY=FGoj/A7SWg8oF5ZMC/q8m2Xu7Ogj0WDc8DNcIXBF
+echo AWS_DEFAULT_REGION=eu-north-1
+echo OUTPUT_FORMAT=json
+echo.
+echo PUSHOVER_APP_TOKEN=your_pushover_app_token
+echo PUSHOVER_USER_KEY=your_pushover_user_key
+) > .env
 
 docker run --rm -p 8501:8501 --env-file .env mateomolinaro1/systematic-trading-infra:ALL.v2 -m streamlit run src/systematic_trading_infra/dashboards/paper_trading_monitoring/app.py --server.address=0.0.0.0 --server.port=8501
-[//]: # open in your browser: (http://localhost:8501)
-docker run --rm -p 8502:8501 --env-file .env mateomolinaro1/systematic-trading-infra:ALL.v2 -m streamlit run src/systematic_trading_infra/dashboards/backtesting/app.py --server.address=0.0.0.0 --server.port=8501
-[//]: # open in your browser: (http://localhost:8502)
-docker run --rm -p 8503:8501 --env-file .env mateomolinaro1/systematic-trading-infra:ALL.v2 -m streamlit run src/systematic_trading_infra/dashboards/mock_trading_monitoring/app.py --server.address=0.0.0.0 --server.port=8501
-[//]: # open in your browser: (http://localhost:8503)
-## Disclaimer
 
-This project is for **educational and research purposes only**.  
-It is **not financial advice** and should not be used in production without proper validation, risk controls, and compliance checks.
+docker run --rm -p 8502:8501 --env-file .env mateomolinaro1/systematic-trading-infra:ALL.v2 -m streamlit run src/systematic_trading_infra/dashboards/backtesting/app.py --server.address=0.0.0.0 --server.port=8501
+
+docker run --rm -p 8503:8501 --env-file .env mateomolinaro1/systematic-trading-infra:ALL.v2 -m streamlit run src/systematic_trading_infra/dashboards/mock_trading_monitoring/app.py --server.address=0.0.0.0 --server.port=8501
+```
+You can now go to `http://localhost:8501` in your web browser to access the live strategy monitoring dashboard.
+You can now go to `http://localhost:8502` in your web browser to access the strategy backtesting dashboard.
+You can now go to `http://localhost:8503` in your web browser to access the mock trading monitoring dashboard.
+
+Enjoy!
+
+Contact (LinkedIn): https://www.linkedin.com/in/mat%C3%A9o-molinaro/
