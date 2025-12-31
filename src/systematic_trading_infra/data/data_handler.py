@@ -5,12 +5,10 @@ import pickle
 import os
 import time
 from pandas.tseries.offsets import BDay
-from typing import List, Union, Tuple, Dict, Optional
+from typing import List, Union, Dict
 import logging
 import wrds
 from ib_insync import *
-import asyncio
-from tqdm.asyncio import tqdm_asyncio
 import boto3
 from botocore.client import BaseClient
 from pathlib import Path
@@ -160,21 +158,6 @@ class DataHandler:
             self.wrds_db.close()
             self.wrds_db = None
 
-    # def connect_ib(self):
-    #     """Establishes a connection to the Interactive Brokers API using the provided host, port, and client ID."""
-    #     if self.ib is None:
-    #         self.ib = IB()
-    #         # when ib disconnect, call self.on_ib_disconnected (operator overloading)
-    #         self.ib.disconnectedEvent += lambda: self.on_ib_disconnected()
-    #
-    #
-    #     if not self.ib.isConnected():
-    #         self.ib.connect(host=self.ib_host,
-    #                         port=self.ib_port,
-    #                         clientId=self.ib_client_id)
-    #
-    #         self.ib.sleep(1)
-    #         logger.info("Connected to IB.")
     def connect_ib(self):
         if self.ib is None:
             self.ib = IB()
@@ -1001,24 +984,6 @@ class DataHandler:
         if return_bool:
             return creds
 
-    # def connect_aws_s3(self)->None:
-    #     """
-    #     Connect to AWS S3 using the loaded credentials.
-    #     :return: boto3 S3 client.
-    #     """
-    #     if self.aws_credentials is None:
-    #         try:
-    #             self.get_credentials()
-    #         except Exception as e:
-    #             logger.error(f"Error loading AWS credentials: {e}")
-    #             raise ValueError("AWS credentials not loaded. Please provide the credentials file.")
-    #
-    #     self.s3 = boto3.client(
-    #         's3',
-    #         aws_access_key_id=self.aws_credentials["KEY"],
-    #         aws_secret_access_key=self.aws_credentials["SECRET_KEY"],
-    #         region_name=self.aws_credentials["REGION"]
-    #     )
     def connect_aws_s3(self) -> None:
         """
         Connect to AWS S3 using environment-based credentials.

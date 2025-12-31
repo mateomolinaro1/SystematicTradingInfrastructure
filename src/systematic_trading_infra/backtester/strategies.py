@@ -43,9 +43,6 @@ class CrossSectionalPercentiles(Strategy):
                  signal_function_inputs:dict=None,
                  percentiles_winsorization: Tuple[int, int] = (1, 99)
                  ):
-        # percentiles_portfolios: Tuple[int, int] = (10, 90),
-        # percentiles_winsorization: Tuple[int, int] = (1, 99),
-        # industry_segmentation: Union[None, pd.DataFrame] = None)
         """
         Initializes the CrossSectionalPercentiles strategy.
 
