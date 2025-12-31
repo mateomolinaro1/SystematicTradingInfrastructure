@@ -12,14 +12,13 @@ from systematic_trading_infra.mock_trading.persistence.parquet_writer import Par
 from systematic_trading_infra.mock_trading.config import DATA_PATH
 
 # ------------------------------------------------------------------
-# Graceful shutdown flag
-# ------------------------------------------------------------------
+# shutdown flag
 STOP_REQUESTED = False
 
 
 def _handle_shutdown(signum, frame):
     global STOP_REQUESTED
-    print(f"🛑 Received signal {signum}, shutting down runner...")
+    print(f"Received signal {signum}, shutting down runner...")
     STOP_REQUESTED = True
 
 
@@ -42,8 +41,8 @@ def run(
 
     writer = ParquetWriter(base_dir=DATA_PATH)
 
-    print("🚀 Mock trading started")
-    print(f"📁 Writing parquets to: {writer.run_dir}")
+    print("Mock trading started")
+    print(f"Writing parquets to: {writer.run_dir}")
 
     try:
         step = 0
@@ -98,9 +97,9 @@ def run(
             time.sleep(interval_sec)
 
     finally:
-        print("🧹 Cleaning up parquet files...")
+        print("Cleaning up parquet files...")
         writer.cleanup()
-        print("✅ Cleanup completed")
+        print("Cleanup completed")
 
 
 if __name__ == "__main__":

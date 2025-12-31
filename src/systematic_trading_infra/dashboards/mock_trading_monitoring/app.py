@@ -16,16 +16,14 @@ from systematic_trading_infra.dashboards.mock_trading_monitoring.data_loader imp
 )
 
 # ---------------------------------------------------------------------
-# Page config (MUST be first)
-# ---------------------------------------------------------------------
+# Page config
 st.set_page_config(
     page_title="Mock Trading – Live Monitoring",
     layout="wide",
 )
 
 # ---------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------
+# Const
 RUNNER_PATH = PROJECT_ROOT / "mock_trading" / "runner.py"
 REFRESH_SECONDS = 15
 
@@ -34,26 +32,23 @@ st.sidebar.caption(f"Exists: {RUNNER_PATH.exists()}")
 
 # ---------------------------------------------------------------------
 # Session state
-# ---------------------------------------------------------------------
 if "runner_proc" not in st.session_state:
     st.session_state.runner_proc = None
 
 
 # ---------------------------------------------------------------------
 # Cleanup on dashboard exit
-# ---------------------------------------------------------------------
 def _shutdown_runner():
     proc = st.session_state.get("runner_proc")
     if proc and proc.poll() is None:
-        print("🛑 Stopping runner...")
+        print("Stopping runner...")
         proc.send_signal(signal.SIGTERM)
 
 
 atexit.register(_shutdown_runner)
 
 # ---------------------------------------------------------------------
-# Sidebar – Runner control
-# ---------------------------------------------------------------------
+# Sidebar – runner
 st.sidebar.header("Mock Trading Control")
 
 if st.sidebar.button("▶ Start Live Mock Trading"):
@@ -68,15 +63,13 @@ if st.sidebar.button("▶ Start Live Mock Trading"):
         st.sidebar.warning("Runner already running")
 
 # ---------------------------------------------------------------------
-# Sidebar – Settings
-# ---------------------------------------------------------------------
+# Sidebar – settings
 st.sidebar.divider()
 refresh = st.sidebar.checkbox("Auto-refresh", value=True)
 st.sidebar.caption(f"Refresh every {REFRESH_SECONDS}s")
 
 # ---------------------------------------------------------------------
 # Main page
-# ---------------------------------------------------------------------
 st.title("📈 Live Paper Trading – Mock Strategy Monitoring")
 
 prices = load_prices()
@@ -121,7 +114,6 @@ else:
 
 # ---------------------------------------------------------------------
 # Auto refresh
-# ---------------------------------------------------------------------
 if refresh:
     time.sleep(REFRESH_SECONDS)
     st.rerun()

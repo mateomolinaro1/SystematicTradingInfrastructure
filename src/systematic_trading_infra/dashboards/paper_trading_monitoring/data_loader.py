@@ -3,18 +3,14 @@ from systematic_trading_infra.utils.s3_utils import s3Utils
 from dotenv import load_dotenv
 load_dotenv()
 
-# ---------------------------------------------------------------------
-# Constants (single strategy / single account)
-# ---------------------------------------------------------------------
 
+# Constants
 PATH_PRICES = "systematic-trading-infra-storage/data/ib_historical_prices.parquet"
 PATH_ORDERS = "systematic-trading-infra-storage/paper_trading/orders.parquet"
 PATH_PORTFOLIO_VALUE = "systematic-trading-infra-storage/paper_trading/portfolio_value_historical.parquet"
 PATH_WEIGHTS = "systematic-trading-infra-storage/paper_trading/weights.parquet"
 
-# ---------------------------------------------------------------------
-# Internal helper
-# ---------------------------------------------------------------------
+# helper
 
 def _load_parquet_from_s3(path: str) -> pd.DataFrame:
     """
@@ -30,9 +26,7 @@ def _load_parquet_from_s3(path: str) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------
+# utils functions
 
 def load_prices() -> pd.DataFrame:
     """

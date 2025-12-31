@@ -17,7 +17,7 @@ class ParquetWriter:
         print("CWD:", Path.cwd())
         print("Run dir:", self.run_dir.resolve())
 
-        # In-memory storage (full history)
+        # In-memory storage
         self._data = {
             "prices": pd.DataFrame(),
             "signals": pd.DataFrame(),

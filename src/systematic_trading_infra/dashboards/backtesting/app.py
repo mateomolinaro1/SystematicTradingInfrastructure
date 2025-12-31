@@ -40,7 +40,7 @@ nb_period_mom = st.sidebar.slider(
     min_value=22,
     max_value=504,
     value=252,
-    step=22
+    step=1
 )
 
 nb_period_to_exclude_mom = st.sidebar.slider(

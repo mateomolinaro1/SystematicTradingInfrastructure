@@ -5,8 +5,8 @@ from systematic_trading_infra.mock_trading.config import DATA_PATH
 
 
 # ---------------------------------------------------------------------
-# Internal helper
-# ---------------------------------------------------------------------
+# helper
+
 from pathlib import Path
 
 def _get_latest_run_dir(base_dir: Path) -> Path | None:
@@ -26,7 +26,7 @@ def _get_latest_run_dir(base_dir: Path) -> Path | None:
 def _load_parquet(file_name: str) -> pd.DataFrame:
     base_dir = Path(DATA_PATH)
     run_dir = _get_latest_run_dir(base_dir)
-    print("📂 Reading from:", run_dir)
+    print("Reading from:", run_dir)
 
     if run_dir is None:
         return pd.DataFrame()
@@ -55,8 +55,7 @@ def _load_parquet(file_name: str) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------
+# loading functions
 
 def load_prices() -> pd.DataFrame:
     """
